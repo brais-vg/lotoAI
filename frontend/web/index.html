@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>lotoAI - Piloto</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+  <header>
+    <h1>lotoAI</h1>
+    <p>Piloto: chat con agente y subida de archivos al RAG.</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Chat</h2>
+        <span id="chat-status" class="status">Listo</span>
+      </div>
+      <div id="messages" class="messages"></div>
+      <form id="chat-form" class="form">
+        <textarea id="message" rows="3" placeholder="Escribe tu mensaje..."></textarea>
+        <button type="submit">Enviar</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Subir archivo al RAG</h2>
+        <span id="upload-status" class="status">Pendiente</span>
+      </div>
+      <form id="upload-form" class="form" enctype="multipart/form-data">
+        <input type="file" id="file" name="file" />
+        <button type="submit">Subir</button>
+      </form>
+      <div id="upload-result" class="upload-result"></div>
+    </section>
+  </main>
+
+  <footer>
+    <small>Sin login por ahora. La web es responsive para un futuro cliente móvil.</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

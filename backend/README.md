@@ -21,3 +21,7 @@ Proximos pasos:
 Tests:
 - Ejecutar: `cd backend/gateway && pytest`
 - Cobertura actual: `/health` y `/info`.
+
+Endpoints piloto:
+- `POST /api/chat` -> llama al agente orquestador (OpenAI o stub).
+- `POST /api/upload` -> envía archivo al RAG y devuelve metadata almacenada.

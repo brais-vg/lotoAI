@@ -10,7 +10,7 @@ La suite de tests está dividida por servicio. Cada carpeta Python incluye `test
 ## Servicios cubiertos
 - `backend/gateway`: endpoints `/health` y `/info`
 - `services/agent-orchestrator`: health y stub `/orchestrate`
-- `services/rag/server`: health y `/search`
+- `services/rag/server`: health y `/search` (el `/upload` requiere Postgres en marcha)
 - `services/rag/ingestion`: stub de ingesta y cliente Qdrant
 - `services/mcp/server`: health y `/tools`
 - `services/mcp/client`: cliente httpx y manejo de errores

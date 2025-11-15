@@ -11,6 +11,10 @@ volumes:
   clickhouse_data:
   prometheus_data:
   grafana_data:
+  rag_data:
+  gateway_logs:
+  orchestrator_logs:
+  rag_logs:
 
 services:
   traefik:
@@ -121,6 +125,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../../.env.example
+    environment:
+      LOG_PATH: /app/logs/app.log
     ports:
       - "8088:8080"
     depends_on:
@@ -130,6 +136,8 @@ services:
     networks:
       - lotoai
     profiles: ["app"]
+    volumes:
+      - gateway_logs:/app/logs
 
   agent-orchestrator:
     build:
@@ -137,6 +145,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../../.env.example
+    environment:
+      LOG_PATH: /app/logs/app.log
     ports:
       - "8090:8090"
     depends_on:
@@ -146,6 +156,8 @@ services:
     networks:
       - lotoai
     profiles: ["app"]
+    volumes:
+      - orchestrator_logs:/app/logs
 
   rag-server:
     build:
@@ -153,13 +165,21 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../../.env.example
+    environment:
+      LOG_PATH: /app/logs/app.log
+      RAG_UPLOAD_DIR: /app/data/uploads
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/lotoai}
     ports:
       - "8000:8000"
     depends_on:
       - qdrant
+      - postgres
     networks:
       - lotoai
     profiles: ["app"]
+    volumes:
+      - rag_data:/app/data
+      - rag_logs:/app/logs
 
   mcp-server:
     build:
@@ -169,6 +189,18 @@ services:
       - ../../.env.example
     ports:
       - "8081:8081"
+    networks:
+      - lotoai
+    profiles: ["app"]
+
+  web:
+    build:
+      context: ../../frontend/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
     networks:
       - lotoai
     profiles: ["app"]

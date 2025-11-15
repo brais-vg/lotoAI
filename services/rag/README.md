@@ -6,7 +6,10 @@ Componentes:
 - server/: servicio de consulta semantica que devuelve contexto al orquestador.
 
 Stack actual:
-- Servidor FastAPI stub en `server/app/main.py`.
+- Servidor FastAPI en `server/app/main.py` con endpoints:
+  - `/health`
+  - `/upload` (guarda ficheros en disco y metadata en Postgres)
+  - `/search` (stub)
 - Script de ingesta stub en `ingestion/ingest.py` usando Qdrant client.
 
 Como levantar en local:

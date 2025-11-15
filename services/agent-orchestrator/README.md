@@ -12,7 +12,7 @@ Ideas:
 - Observabilidad con spans por decision tomada.
 
 Stack actual:
-- FastAPI + Uvicorn (stub en `app/main.py`).
+- FastAPI + Uvicorn (chat con OpenAI; stub si no hay API key).
 
 Como levantar en local:
 - Python: `cd services/agent-orchestrator && uvicorn app.main:app --host 0.0.0.0 --port 8090 --reload`
@@ -26,3 +26,7 @@ Pendientes:
 Tests:
 - Ejecutar: `cd services/agent-orchestrator && pytest`
 - Pruebas actuales: health check y stub de `/orchestrate` (aseguran contrato minimo mientras se implementa la logica real).
+
+Config OpenAI:
+- Variables: `OPENAI_API_KEY`, `OPENAI_MODEL` (ej: gpt-4o-mini).
+- Si falta API key, se usa respuesta stub (`orchestration stub: ...`).

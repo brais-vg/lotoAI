@@ -18,6 +18,7 @@ dist/
 out/
 build/
 coverage/
+logs/
 
 # OS / editors
 .DS_Store
