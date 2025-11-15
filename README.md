@@ -1,5 +1,5 @@
 # lotoAI
-Plataforma modular de servicios de IA. Este repo contiene el esqueleto inicial y un piloto básico funcional (chat + subida de ficheros a RAG).
+Plataforma modular de servicios de IA. Este repo contiene el esqueleto inicial y un piloto basico funcional (chat + subida de ficheros a RAG).
 
 ## Arquitectura general
 - Cliente web responsive (sin login) que consume el gateway.
@@ -11,7 +11,7 @@ Plataforma modular de servicios de IA. Este repo contiene el esqueleto inicial y
 ## Estructura de carpetas
 ```
 backend/                  # Gateway/API BFF
-frontend/web/             # Web estática responsive para chat + subida
+frontend/web/             # Web estatica responsive para chat + subida
 infra/docker/             # docker-compose con perfiles
 services/
   agent-orchestrator/     # Chat con OpenAI
@@ -23,14 +23,15 @@ services/
   agents-external/        # Placeholder agentes externos
 ```
 
-## Cómo levantar el piloto (local)
+## Como levantar el piloto (local)
 1. Copia `.env.example` a `.env` y rellena `OPENAI_API_KEY` si quieres respuestas reales.
-2. Levanta dependencias y app: `cd infra/docker && docker compose --profile core --profile app up -d --build`
+2. Ejecuta `./scripts/init.sh` (Linux/Mac) o `./scripts/init.ps1` (Windows) para construir y levantar perfiles core+app.
    - Web: http://localhost:3000
    - Gateway API: http://localhost:8088
    - Orquestador: http://localhost:8090
    - RAG: http://localhost:8000
-3. Si no pones API key, el chat devolverá un stub. El upload requiere Postgres levantado (perfil core).
+3. Para parar: `./scripts/stop.sh` o `./scripts/stop.ps1`. Para reiniciar sin build: `./scripts/start.sh` o `./scripts/start.ps1`.
+4. Sin API key el chat usa stub. El upload requiere Postgres (perfil core) y crea metadata en la DB.
 
 ## Endpoints principales
 - Gateway: `POST /api/chat` (body `{message}`) -> orquestador; `POST /api/upload` (multipart `file`) -> RAG.
@@ -38,10 +39,10 @@ services/
 - RAG: `POST /upload` -> guarda fichero en `/app/data/uploads` y metadata en Postgres; `POST /search` stub
 
 ## Tests
-- Cada servicio Python incluye `tests/` con validaciones básicas de health/contratos iniciales.
+- Cada servicio Python incluye `tests/` con validaciones basicas de health/contratos iniciales.
 - Ejemplo: `cd backend/gateway && pip install -r requirements.txt && pytest`
-- Guía ampliada en `docs/TESTING.md`.
+- Guia ampliada en `docs/TESTING.md`.
 
 ## Notas
-- Logging persiste en `/app/logs/app.log` (volúmenes mapeados en docker-compose para gateway/orquestador/RAG).
-- MCP y agentes externos específicos quedan en desarrollo.
+- Logging persiste en `/app/logs/app.log` (volumenes mapeados en docker-compose para gateway/orquestador/RAG).
+- MCP y agentes externos especificos quedan en desarrollo.
