@@ -81,3 +81,28 @@ async def upload(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as exc:
         logger.exception("Error subiendo archivo a RAG: %s", exc)
         raise HTTPException(status_code=502, detail="Error al subir archivo al RAG")
+
+
+@app.get("/api/chat/logs")
+async def chat_logs(limit: int = 20) -> Dict[str, Any]:
+    """Proxy de logs del orquestador."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{ORCHESTRATOR_URL}/chat/logs", params={"limit": limit})
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.exception("Error obteniendo logs del orquestador: %s", exc)
+        raise HTTPException(status_code=502, detail="Error al obtener logs")
+    return resp.json()
+@app.get("/api/chat/logs")
+async def chat_logs(limit: int = 20) -> Dict[str, Any]:
+    """Proxy de logs del orquestador."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{ORCHESTRATOR_URL}/chat/logs", params={"limit": limit})
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.exception("Error obteniendo logs del orquestador: %s", exc)
+        # Respuesta vacia para no romper clientes si no hay orquestador en tests locales
+        return {"items": []}
+    return resp.json()

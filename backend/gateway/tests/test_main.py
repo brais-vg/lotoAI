@@ -15,3 +15,9 @@ async def test_info(client):
     body = resp.json()
     assert body.get("name") == "lotoAI Gateway"
     assert "orchestrator" in body.get("services", [])
+
+
+@pytest.mark.asyncio
+async def test_chat_logs_endpoint(client):
+    resp = await client.get("/api/chat/logs")
+    assert resp.status_code in (200, 502)

@@ -3,7 +3,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import psycopg2
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="lotoAI RAG Server", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="lotoAI RAG Server", version="0.3.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -111,7 +111,76 @@ async def upload(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="No se pudo almacenar el archivo")
 
 
+@app.get("/uploads")
+async def list_uploads(limit: int = 20) -> Dict[str, Any]:
+    """Devuelve uploads recientes desde Postgres."""
+    if not DB_AVAILABLE:
+        return {"items": []}
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, filename, path, size_bytes, content_type, created_at
+                    FROM uploads
+                    ORDER BY created_at DESC
+                    LIMIT %s;
+                    """,
+                    (max(1, min(limit, 100)),),
+                )
+                rows = cur.fetchall()
+        items: List[Dict[str, Any]] = [
+            {
+                "id": r["id"],
+                "filename": r["filename"],
+                "path": r["path"],
+                "size_bytes": r["size_bytes"],
+                "content_type": r["content_type"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+        return {"items": items}
+    except Exception as exc:  # pragma: no cover
+        logger.warning("No se pudieron listar uploads: %s", exc)
+        return {"items": []}
+
+
 @app.post("/search")
 async def search(query: Dict[str, Any]) -> Dict[str, Any]:
-    # TODO: integrar con Qdrant y embeddings
-    return {"query": query.get("text", ""), "results": []}
+    """
+    Búsqueda básica: filtra uploads por nombre (ILIKE). Placeholder hasta integrar embeddings/Qdrant.
+    """
+    text = (query.get("text") or "").strip()
+    if not DB_AVAILABLE or not text:
+        return {"query": text, "results": []}
+    try:
+        like = f"%{text}%"
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, filename, path, size_bytes, content_type, created_at
+                    FROM uploads
+                    WHERE filename ILIKE %s
+                    ORDER BY created_at DESC
+                    LIMIT 20;
+                    """,
+                    (like,),
+                )
+                rows = cur.fetchall()
+        results: List[Dict[str, Any]] = [
+            {
+                "id": r["id"],
+                "filename": r["filename"],
+                "path": r["path"],
+                "size_bytes": r["size_bytes"],
+                "content_type": r["content_type"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+        return {"query": text, "results": results}
+    except Exception as exc:  # pragma: no cover
+        logger.warning("No se pudo ejecutar búsqueda: %s", exc)
+        return {"query": text, "results": []}
