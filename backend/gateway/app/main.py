@@ -106,3 +106,16 @@ async def chat_logs(limit: int = 20) -> Dict[str, Any]:
         # Respuesta vacia para no romper clientes si no hay orquestador en tests locales
         return {"items": []}
     return resp.json()
+
+
+@app.get("/api/uploads")
+async def list_uploads(limit: int = 20) -> Dict[str, Any]:
+    """Proxy para listar uploads recientes desde RAG."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{RAG_SERVER_URL}/uploads", params={"limit": limit})
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.exception("Error obteniendo uploads del RAG: %s", exc)
+        return {"items": []}
+    return resp.json()

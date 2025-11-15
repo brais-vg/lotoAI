@@ -29,6 +29,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
+MAX_LOG_LENGTH = 500
 
 app = FastAPI(title="lotoAI Agent Orchestrator", version="0.2.0")
 
@@ -41,6 +42,8 @@ def log_chat(message: str, provider: str, response: str) -> None:
     """Persistencia best-effort de logs de chat en Postgres."""
     if not DATABASE_URL:
         return
+    msg = (message or "")[:MAX_LOG_LENGTH]
+    resp = (response or "")[:MAX_LOG_LENGTH]
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as cur:
@@ -57,7 +60,7 @@ def log_chat(message: str, provider: str, response: str) -> None:
                 )
                 cur.execute(
                     "INSERT INTO chat_logs (message, provider, response) VALUES (%s, %s, %s);",
-                    (message, provider, response),
+                    (msg, provider, resp),
                 )
             conn.commit()
     except Exception as exc:  # pragma: no cover - solo advertimos
