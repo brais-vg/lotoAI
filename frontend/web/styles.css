@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   --bg: #0f172a;
   --panel: #111827;
@@ -64,3 +64,9 @@ footer { color: var(--muted); text-align: center; }
   main { grid-template-columns: 1fr; }
   .messages { height: 260px; }
 }
+
+.panel-header button { background: #1e293b; color: #e2e8f0; border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.list { background: #0b1324; border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-height: 80px; display: flex; flex-direction: column; gap: 6px; }
+.list-item { background: rgba(148,163,184,0.1); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 13px; }
+
+\n.list-meta { font-size: 12px; color: var(--muted); }\n

@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 
 import psycopg2
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import BaseModel
 
 try:
@@ -30,6 +32,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
 MAX_LOG_LENGTH = 500
+CHAT_COUNTER = Counter("lotoai_orchestrator_chat_total", "Solicitudes de chat", ["provider"])
+LOGS_COUNTER = Counter("lotoai_orchestrator_logs_total", "Lecturas de logs de chat")
 
 app = FastAPI(title="lotoAI Agent Orchestrator", version="0.2.0")
 
@@ -88,6 +92,7 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
             reply = completion.choices[0].message.content
             logger.info("Chat completado con OpenAI", extra={"provider": "openai"})
             log_chat(req.message, "openai", reply or "")
+            CHAT_COUNTER.labels(provider="openai").inc()
             return {"message": reply, "provider": "openai", "input": req.message}
         except Exception as exc:  # pragma: no cover - solo en runtime con API real
             logger.exception("Error llamando a OpenAI: %s", exc)
@@ -97,6 +102,7 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     logger.info("Devolviendo respuesta stub (sin OPENAI_API_KEY)")
     message = f"orchestration stub: {req.message}"
     log_chat(req.message, "stub", message)
+    CHAT_COUNTER.labels(provider="stub").inc()
     return {"message": message, "provider": "stub", "input": req.message}
 
 
@@ -110,10 +116,12 @@ async def orchestrate(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.get("/chat/logs")
-async def chat_logs(limit: int = 20) -> Dict[str, Any]:
+async def chat_logs(limit: int = 20, offset: int = 0) -> Dict[str, Any]:
     """Devuelve los ultimos chats registrados (best-effort)."""
     if not DATABASE_URL:
         return {"items": []}
+    lim = max(1, min(limit, 100))
+    off = max(0, offset)
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as cur:
@@ -122,9 +130,9 @@ async def chat_logs(limit: int = 20) -> Dict[str, Any]:
                     SELECT id, message, provider, response, created_at
                     FROM chat_logs
                     ORDER BY created_at DESC
-                    LIMIT %s;
+                    LIMIT %s OFFSET %s;
                     """,
-                    (max(1, min(limit, 100)),),
+                    (lim, off),
                 )
                 rows = cur.fetchall()
         items: List[Dict[str, Any]] = [
@@ -137,7 +145,13 @@ async def chat_logs(limit: int = 20) -> Dict[str, Any]:
             }
             for r in rows
         ]
+        LOGS_COUNTER.inc()
         return {"items": items}
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudieron leer logs de DB: %s", exc)
         return {"items": []}
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

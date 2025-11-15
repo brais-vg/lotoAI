@@ -27,3 +27,9 @@ async def test_chat_logs_endpoint(client):
 async def test_list_uploads_endpoint(client):
     resp = await client.get("/api/uploads")
     assert resp.status_code in (200, 502)
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint(client):
+    resp = await client.post("/api/search", json={"text": "hello"})
+    assert resp.status_code in (200, 502)

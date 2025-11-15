@@ -11,7 +11,7 @@ Plataforma modular de servicios de IA. Este repo contiene el esqueleto inicial y
 ## Estructura de carpetas
 ```
 backend/                  # Gateway/API BFF
-frontend/web/             # Web estatica responsive para chat + subida
+frontend/web/             # Web estatica responsive para chat + upload + busqueda/logs
 infra/docker/             # docker-compose con perfiles
 services/
   agent-orchestrator/     # Chat con OpenAI
@@ -34,9 +34,9 @@ services/
 4. Sin API key el chat usa stub. El upload requiere Postgres (perfil core) y crea metadata en la DB.
 
 ## Endpoints principales
-- Gateway: `POST /api/chat` (body `{message}`) -> orquestador; `POST /api/upload` (multipart `file`) -> RAG.
-- Orquestador: `POST /chat` -> OpenAI
-- RAG: `POST /upload` -> guarda fichero en `/app/data/uploads` y metadata en Postgres; `POST /search` stub
+- Gateway: `POST /api/chat` (body `{message}`) -> orquestador; `POST /api/upload` (multipart `file`) -> RAG; `GET /api/uploads` (lista con paginacion offset/limit); `GET /api/chat/logs`; `POST /api/search` -> RAG; `GET /metrics` (Prometheus).
+- Orquestador: `POST /chat` -> OpenAI/stub; `GET /chat/logs` (offset/limit); `GET /metrics`.
+- RAG: `POST /upload` (guarda fichero y metadata en Postgres; indexa en Qdrant y embeddings si se habilita); `GET /uploads` (offset/limit); `POST /search` (vectorial si hay Qdrant+OpenAI, fallback LIKE); `GET /metrics`.
 
 ## Tests
 - Cada servicio Python incluye `tests/` con validaciones basicas de health/contratos iniciales.
@@ -44,5 +44,6 @@ services/
 - Guia ampliada en `docs/TESTING.md`.
 
 ## Notas
-- Logging persiste en `/app/logs/app.log` (volumenes mapeados en docker-compose para gateway/orquestador/RAG).
-- MCP y agentes externos especificos quedan en desarrollo.
+- Logging persiste en `/app/logs/app.log` (volumenes mapeados en docker-compose para gateway/orquestador/RAG). Formato actual: textual.
+- Embeddings: por defecto solo se indexa el nombre del fichero; para indexar contenido activa `ENABLE_CONTENT_EMBED=1` y ajusta `CHUNK_SIZE_CHARS`/`MAX_CHUNKS` (usa OpenAI embeddings y Qdrant).
+- MCP y agentes externos especificos siguen en desarrollo.

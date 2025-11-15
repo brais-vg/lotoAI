@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 import uuid
@@ -12,6 +13,8 @@ except ImportError:  # pragma: no cover
 
 import psycopg2
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from psycopg2.extras import RealDictCursor
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -39,9 +42,16 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
+ENABLE_CONTENT_EMBED = os.getenv("ENABLE_CONTENT_EMBED", "0").lower() in {"1", "true", "yes"}
+CHUNK_SIZE_CHARS = int(os.getenv("CHUNK_SIZE_CHARS", "800"))
+MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
+EMBED_COLLECTION_CONTENT = os.getenv("EMBED_COLLECTION_CONTENT", "uploads-content")
 
 UPLOAD_DIR = Path(os.getenv("RAG_UPLOAD_DIR", "./data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_COUNTER = Counter("lotoai_rag_uploads_total", "Uploads procesados", ["status"])
+EMBED_COUNTER = Counter("lotoai_rag_embeddings_total", "Embeddings generados", ["type"])
+SEARCH_COUNTER = Counter("lotoai_rag_search_total", "Busquedas procesadas", ["mode"])
 
 
 def init_db() -> None:
@@ -96,6 +106,71 @@ def embed_text(text: str) -> List[float]:
     return result.data[0].embedding  # type: ignore[attr-defined]
 
 
+def chunk_text(text: str) -> List[str]:
+    if not text:
+        return []
+    chunks = []
+    size = max(200, CHUNK_SIZE_CHARS)
+    for i in range(0, len(text), size):
+        chunks.append(text[i : i + size])
+        if len(chunks) >= MAX_CHUNKS:
+            break
+    return chunks
+
+
+def extract_text_from_bytes(data: bytes, content_type: str, filename: str) -> str:
+    ct = (content_type or "").lower()
+    name = filename.lower()
+    if "pdf" in ct or name.endswith(".pdf"):
+        try:
+            import pypdf
+
+            reader = pypdf.PdfReader(io.BytesIO(data))
+            pages = [p.extract_text() or "" for p in reader.pages]
+            return "\n".join(pages)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("No se pudo extraer texto de PDF: %s", exc)
+            return ""
+    # texto plano o fallback
+    try:
+        return data.decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+
+def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type: str) -> None:
+    if not ENABLE_CONTENT_EMBED or not openai_client:
+        return
+    text = extract_text_from_bytes(data, content_type, payload.get("filename", ""))
+    chunks = chunk_text(text)
+    if not chunks:
+        return
+    try:
+        client = QdrantClient(url=QDRANT_URL)
+        ensure_qdrant_collection(client, name=EMBED_COLLECTION_CONTENT)
+        points = []
+        for idx, chunk in enumerate(chunks):
+            vector = embed_text(chunk)
+            point = PointStruct(
+                id=payload["id"] * 1000 + idx,
+                vector=vector,
+                payload={
+                    "file_id": payload["id"],
+                    "filename": payload.get("filename"),
+                    "path": payload.get("stored_path"),
+                    "size_bytes": payload.get("size_bytes"),
+                    "content_type": payload.get("content_type"),
+                    "created_at": payload.get("created_at"),
+                    "chunk": chunk[:300],
+                },
+            )
+            points.append(point)
+        client.upsert(collection_name=EMBED_COLLECTION_CONTENT, points=points)
+        EMBED_COUNTER.labels(type="content").inc(len(points))
+    except Exception as exc:  # pragma: no cover
+        logger.warning("No se pudo indexar contenido en Qdrant: %s", exc)
+
+
 def index_upload_qdrant(payload: Dict[str, Any]) -> None:
     """Indexa el upload en Qdrant con embedding del nombre de fichero."""
     if not openai_client:
@@ -111,6 +186,7 @@ def index_upload_qdrant(payload: Dict[str, Any]) -> None:
         )
         client.upsert(collection_name="uploads", points=[point])
         logger.info("Indexado en Qdrant upload id=%s", payload["id"])
+        EMBED_COUNTER.labels(type="filename").inc()
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudo indexar en Qdrant: %s", exc)
 
@@ -157,17 +233,22 @@ async def upload(file: UploadFile = File(...)) -> Dict[str, Any]:
         }
         logger.info("Archivo guardado en RAG: %s", payload)
         index_upload_qdrant(payload)
+        index_content_embeddings(payload, data, file.content_type or "")
+        UPLOAD_COUNTER.labels(status="ok").inc()
         return payload
     except Exception as exc:
         logger.exception("No se pudo almacenar el archivo: %s", exc)
+        UPLOAD_COUNTER.labels(status="error").inc()
         raise HTTPException(status_code=500, detail="No se pudo almacenar el archivo")
 
 
 @app.get("/uploads")
-async def list_uploads(limit: int = 20) -> Dict[str, Any]:
+async def list_uploads(limit: int = 20, offset: int = 0) -> Dict[str, Any]:
     """Devuelve uploads recientes desde Postgres."""
     if not DB_AVAILABLE:
         return {"items": []}
+    lim = max(1, min(limit, 100))
+    off = max(0, offset)
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -176,9 +257,9 @@ async def list_uploads(limit: int = 20) -> Dict[str, Any]:
                     SELECT id, filename, path, size_bytes, content_type, created_at
                     FROM uploads
                     ORDER BY created_at DESC
-                    LIMIT %s;
+                    LIMIT %s OFFSET %s;
                     """,
-                    (max(1, min(limit, 100)),),
+                    (lim, off),
                 )
                 rows = cur.fetchall()
         items: List[Dict[str, Any]] = [
@@ -212,19 +293,40 @@ async def search(query: Dict[str, Any]) -> Dict[str, Any]:
         if openai_client:
             try:
                 client = QdrantClient(url=QDRANT_URL)
-                ensure_qdrant_collection(client)
+                # primero buscar contenido si existe colección
                 vector = embed_text(text)
-                found = client.search(
-                    collection_name="uploads",
-                    query_vector=vector,
-                    limit=5,
-                )
                 results_vec: List[Dict[str, Any]] = []
-                for hit in found:
-                    payload = hit.payload or {}
-                    payload["score"] = hit.score
-                    results_vec.append(payload)
-                return {"query": text, "results": results_vec}
+                try:
+                    ensure_qdrant_collection(client, name=EMBED_COLLECTION_CONTENT)
+                    found_content = client.search(
+                        collection_name=EMBED_COLLECTION_CONTENT,
+                        query_vector=vector,
+                        limit=5,
+                    )
+                    for hit in found_content:
+                        payload = hit.payload or {}
+                        payload["score"] = hit.score
+                        results_vec.append(payload)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Fallo búsqueda vectorial de contenido: %s", exc)
+
+                try:
+                    ensure_qdrant_collection(client, name="uploads")
+                    found_files = client.search(
+                        collection_name="uploads",
+                        query_vector=vector,
+                        limit=5,
+                    )
+                    for hit in found_files:
+                        payload = hit.payload or {}
+                        payload["score"] = hit.score
+                        results_vec.append(payload)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Fallo búsqueda vectorial de nombres: %s", exc)
+
+                if results_vec:
+                    SEARCH_COUNTER.labels(mode="vector").inc()
+                    return {"query": text, "results": results_vec}
             except Exception as exc:  # pragma: no cover
                 logger.warning("Fallo búsqueda vectorial, se usa LIKE: %s", exc)
 
@@ -253,7 +355,13 @@ async def search(query: Dict[str, Any]) -> Dict[str, Any]:
             }
             for r in rows
         ]
+        SEARCH_COUNTER.labels(mode="like").inc()
         return {"query": text, "results": results}
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudo ejecutar búsqueda: %s", exc)
         return {"query": text, "results": []}
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

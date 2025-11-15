@@ -5,6 +5,8 @@ from typing import Any, Dict
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import BaseModel
 
 
@@ -34,9 +36,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+CHAT_COUNTER = Counter("lotoai_gateway_chat_total", "Chat proxied", ["status"])
+UPLOAD_COUNTER = Counter("lotoai_gateway_upload_total", "Uploads proxied", ["status"])
+LOGS_COUNTER = Counter("lotoai_gateway_logs_total", "Lecturas de logs", ["status"])
+SEARCH_COUNTER = Counter("lotoai_gateway_search_total", "Busquedas proxied", ["status"])
+
 
 class ChatRequest(BaseModel):
     message: str
+
+
+class SearchRequest(BaseModel):
+    text: str
 
 
 @app.get("/health")
@@ -62,7 +73,9 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
         resp.raise_for_status()
     except Exception as exc:
         logger.exception("Error llamando a orquestador: %s", exc)
+        CHAT_COUNTER.labels(status="error").inc()
         raise HTTPException(status_code=502, detail="Error con agente orquestador")
+    CHAT_COUNTER.labels(status="ok").inc()
     return resp.json()
 
 
@@ -77,9 +90,11 @@ async def upload(file: UploadFile = File(...)) -> Dict[str, Any]:
         resp.raise_for_status()
         data = resp.json()
         logger.info("Archivo subido a RAG: %s", data.get("id"))
+        UPLOAD_COUNTER.labels(status="ok").inc()
         return data
     except Exception as exc:
         logger.exception("Error subiendo archivo a RAG: %s", exc)
+        UPLOAD_COUNTER.labels(status="error").inc()
         raise HTTPException(status_code=502, detail="Error al subir archivo al RAG")
 
 
@@ -92,19 +107,10 @@ async def chat_logs(limit: int = 20) -> Dict[str, Any]:
         resp.raise_for_status()
     except Exception as exc:
         logger.exception("Error obteniendo logs del orquestador: %s", exc)
-        raise HTTPException(status_code=502, detail="Error al obtener logs")
-    return resp.json()
-@app.get("/api/chat/logs")
-async def chat_logs(limit: int = 20) -> Dict[str, Any]:
-    """Proxy de logs del orquestador."""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{ORCHESTRATOR_URL}/chat/logs", params={"limit": limit})
-        resp.raise_for_status()
-    except Exception as exc:
-        logger.exception("Error obteniendo logs del orquestador: %s", exc)
         # Respuesta vacia para no romper clientes si no hay orquestador en tests locales
+        LOGS_COUNTER.labels(status="error").inc()
         return {"items": []}
+    LOGS_COUNTER.labels(status="ok").inc()
     return resp.json()
 
 
@@ -119,3 +125,23 @@ async def list_uploads(limit: int = 20) -> Dict[str, Any]:
         logger.exception("Error obteniendo uploads del RAG: %s", exc)
         return {"items": []}
     return resp.json()
+
+
+@app.post("/api/search")
+async def search(req: SearchRequest) -> Dict[str, Any]:
+    """Proxy de busquedas al RAG."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{RAG_SERVER_URL}/search", json=req.model_dump())
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.exception("Error buscando en RAG: %s", exc)
+        SEARCH_COUNTER.labels(status="error").inc()
+        return {"query": req.text, "results": []}
+    SEARCH_COUNTER.labels(status="ok").inc()
+    return resp.json()
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
