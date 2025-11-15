@@ -144,4 +144,8 @@ Pensado para ejecutarse en Docker:
 - Servicios segmentados por tack
 - Preparado para migrar a Kubernetes
 
+## 🧱 Infraestructura
+
+Provisional
+
   <img width="1536" height="1024" alt="infra" src="https://github.com/user-attachments/assets/11d18621-bb11-4219-a04a-aa4e90f84f0e" />
