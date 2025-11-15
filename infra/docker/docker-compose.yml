@@ -125,7 +125,7 @@ services:
       context: ../../backend/gateway
       dockerfile: Dockerfile
     env_file:
-      - ../../.env.example
+      - ../../.env
     environment:
       LOG_PATH: /app/logs/app.log
     ports:
@@ -145,7 +145,7 @@ services:
       context: ../../services/agent-orchestrator
       dockerfile: Dockerfile
     env_file:
-      - ../../.env.example
+      - ../../.env
     environment:
       LOG_PATH: /app/logs/app.log
     ports:
@@ -165,7 +165,7 @@ services:
       context: ../../services/rag/server
       dockerfile: Dockerfile
     env_file:
-      - ../../.env.example
+      - ../../.env
     environment:
       LOG_PATH: /app/logs/app.log
       RAG_UPLOAD_DIR: /app/data/uploads
@@ -187,7 +187,7 @@ services:
       context: ../../services/mcp/server
       dockerfile: Dockerfile
     env_file:
-      - ../../.env.example
+      - ../../.env
     ports:
       - "8081:8081"
     networks:
