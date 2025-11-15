@@ -1,0 +1,2 @@
+# lotoAI
+Proyecto LotoAI
