@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
@@ -8,7 +9,7 @@ import psycopg2
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from psycopg2.extras import RealDictCursor
 
-app = FastAPI(title="lotoAI RAG Server", version="0.2.0")
+DB_AVAILABLE = True
 
 
 def configure_logging() -> None:
@@ -29,7 +30,6 @@ DATABASE_URL = os.getenv(
 )
 UPLOAD_DIR = Path(os.getenv("RAG_UPLOAD_DIR", "./data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-DB_AVAILABLE = True
 
 
 def init_db() -> None:
@@ -55,9 +55,13 @@ def init_db() -> None:
         DB_AVAILABLE = False
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
+    yield
+
+
+app = FastAPI(title="lotoAI RAG Server", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")

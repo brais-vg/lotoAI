@@ -1,5 +1,5 @@
-"""Stub de ingesta para RAG.
-Carga documentos y los envía a Qdrant. Completar con embeddings reales.
+ï»¿"""Stub de ingesta para RAG.
+Carga documentos y los envia a Qdrant. Completar con embeddings reales.
 """
 
 from qdrant_client import QdrantClient

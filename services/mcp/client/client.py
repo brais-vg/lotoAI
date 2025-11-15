@@ -1,5 +1,5 @@
-"""Cliente MCP stub.
-Aqui se implementarán las llamadas al servidor MCP y manejo de herramientas.
+ï»¿"""Cliente MCP stub.
+Aqui se implementaran las llamadas al servidor MCP y manejo de herramientas.
 """
 
 import httpx
