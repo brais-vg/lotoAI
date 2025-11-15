@@ -1,0 +1,26 @@
+# Dependencies / virtual envs
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+.env
+.env.*
+
+# Node
+node_modules/
+.npmrc
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+package-lock.json
+.next/
+dist/
+out/
+build/
+coverage/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db

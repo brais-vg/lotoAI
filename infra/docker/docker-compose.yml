@@ -114,3 +114,61 @@ services:
     networks:
       - lotoai
     profiles: ["observability"]
+
+  gateway:
+    build:
+      context: ../../backend/gateway
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    ports:
+      - "8088:8080"
+    depends_on:
+      - postgres
+      - qdrant
+      - nats
+    networks:
+      - lotoai
+    profiles: ["app"]
+
+  agent-orchestrator:
+    build:
+      context: ../../services/agent-orchestrator
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    ports:
+      - "8090:8090"
+    depends_on:
+      - rag-server
+      - mcp-server
+      - nats
+    networks:
+      - lotoai
+    profiles: ["app"]
+
+  rag-server:
+    build:
+      context: ../../services/rag/server
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      - qdrant
+    networks:
+      - lotoai
+    profiles: ["app"]
+
+  mcp-server:
+    build:
+      context: ../../services/mcp/server
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    ports:
+      - "8081:8081"
+    networks:
+      - lotoai
+    profiles: ["app"]

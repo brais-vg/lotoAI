@@ -1,0 +1,10 @@
+{
+  "name": "lotoai-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo TODO: iniciar dev server (Next.js/Vite)",
+    "build": "echo TODO: build web",
+    "start": "echo TODO: start web"
+  }
+}

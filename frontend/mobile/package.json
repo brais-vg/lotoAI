@@ -1,0 +1,9 @@
+{
+  "name": "lotoai-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo TODO: iniciar dev mobile (Expo/React Native)",
+    "build": "echo TODO: build mobile"
+  }
+}
