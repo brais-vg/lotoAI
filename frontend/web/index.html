@@ -13,60 +13,33 @@
     <p>Piloto: chat con agente y subida de archivos al RAG.</p>
   </header>
 
-  <main>
-    <section class="panel">
+  <main class="layout">
+    <section class="chat-panel">
       <div class="panel-header">
         <h2>Chat</h2>
         <span id="chat-status" class="status">Listo</span>
       </div>
       <div id="messages" class="messages"></div>
-      <form id="chat-form" class="form">
+      <form id="chat-form" class="chat-form">
         <textarea id="message" rows="3" placeholder="Escribe tu mensaje..."></textarea>
         <button type="submit">Enviar</button>
       </form>
     </section>
 
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Busqueda</h2>
-        <span id="search-status" class="status">Listo</span>
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <div class="panel-header">
+          <h3>Subir archivo al RAG</h3>
+          <span id="upload-status" class="status">Pendiente</span>
+        </div>
+        <form id="upload-form" class="sidebar-form" enctype="multipart/form-data">
+          <label for="file" class="file-label">Seleccionar archivo</label>
+          <input type="file" id="file" name="file" class="file-input" />
+          <div class="upload-result" id="upload-result"></div>
+          <button type="submit" class="primary-btn">Subir</button>
+        </form>
       </div>
-      <form id="search-form" class="form">
-        <input type="text" id="search-text" placeholder="Buscar en uploads (nombre o vector si aplica)" />
-        <button type="submit">Buscar</button>
-      </form>
-      <div id="search-results" class="list"></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Subir archivo al RAG</h2>
-        <span id="upload-status" class="status">Pendiente</span>
-      </div>
-      <form id="upload-form" class="form" enctype="multipart/form-data">
-        <input type="file" id="file" name="file" />
-        <button type="submit">Subir</button>
-      </form>
-      <div id="upload-result" class="upload-result"></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Uploads recientes</h2>
-        <button id="refresh-uploads" type="button">Refrescar</button>
-        <button id="more-uploads" type="button">Más</button>
-      </div>
-      <div id="uploads-list" class="list"></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Logs de chat</h2>
-        <button id="refresh-logs" type="button">Refrescar</button>
-        <button id="more-logs" type="button">Más</button>
-      </div>
-      <div id="logs-list" class="list"></div>
-    </section>
+    </aside>
   </main>
 
   <footer>

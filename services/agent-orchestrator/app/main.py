@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any, Dict, List
 
+import httpx
 import psycopg2
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
@@ -30,6 +31,7 @@ logger = logging.getLogger("agent-orchestrator")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+RAG_SERVER_URL = os.getenv("RAG_SERVER_URL", "http://rag-server:8000")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
 MAX_LOG_LENGTH = 500
 CHAT_COUNTER = Counter("lotoai_orchestrator_chat_total", "Solicitudes de chat", ["provider"])
@@ -40,6 +42,7 @@ app = FastAPI(title="lotoAI Agent Orchestrator", version="0.2.0")
 
 class ChatRequest(BaseModel):
     message: str
+    top_k: int | None = 3
 
 
 def log_chat(message: str, provider: str, response: str) -> None:
@@ -71,6 +74,33 @@ def log_chat(message: str, provider: str, response: str) -> None:
         logger.warning("No se pudo registrar chat en DB: %s", exc)
 
 
+async def fetch_rag_context(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Busca contexto en RAG; degrada a lista vacía si falla."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{RAG_SERVER_URL}/search",
+                json={"text": query, "limit": limit},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("results", [])[:limit]
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Fallo consultando RAG: %s", exc)
+        return []
+
+
+def build_context_message(sources: List[Dict[str, Any]]) -> str:
+    if not sources:
+        return ""
+    lines = []
+    for idx, s in enumerate(sources, 1):
+        name = s.get("filename") or s.get("path") or f"doc-{idx}"
+        chunk = (s.get("chunk") or "")[:300]
+        lines.append(f"[{idx}] {name}: {chunk}")
+    return "Contexto recuperado:\n" + "\n".join(lines)
+
+
 @app.get("/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -81,11 +111,23 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     """
     Chat simple con proveedor OpenAI. Si falta API key, devuelve respuesta stub.
     """
+    top_k = req.top_k or 3
+    sources = await fetch_rag_context(req.message, limit=top_k)
+    context_msg = build_context_message(sources)
+
     if openai_client:
         try:
+            system = (
+                "Eres un asistente. Usa el contexto si es relevante y cita el nombre del fichero."
+                " Si no hay contexto útil, responde brevemente."
+            )
+            messages = [{"role": "system", "content": system}]
+            if context_msg:
+                messages.append({"role": "system", "content": context_msg})
+            messages.append({"role": "user", "content": req.message})
             completion = openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
-                messages=[{"role": "user", "content": req.message}],
+                messages=messages,
                 temperature=0.3,
                 max_tokens=300,
             )
@@ -93,7 +135,7 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
             logger.info("Chat completado con OpenAI", extra={"provider": "openai"})
             log_chat(req.message, "openai", reply or "")
             CHAT_COUNTER.labels(provider="openai").inc()
-            return {"message": reply, "provider": "openai", "input": req.message}
+            return {"message": reply, "provider": "openai", "input": req.message, "sources": sources}
         except Exception as exc:  # pragma: no cover - solo en runtime con API real
             logger.exception("Error llamando a OpenAI: %s", exc)
             raise HTTPException(status_code=502, detail="Error con proveedor de IA")
@@ -103,7 +145,7 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     message = f"orchestration stub: {req.message}"
     log_chat(req.message, "stub", message)
     CHAT_COUNTER.labels(provider="stub").inc()
-    return {"message": message, "provider": "stub", "input": req.message}
+    return {"message": message, "provider": "stub", "input": req.message, "sources": sources}
 
 
 @app.post("/orchestrate")
