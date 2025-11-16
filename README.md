@@ -32,6 +32,8 @@ services/
    - RAG: http://localhost:8000
 3. Para parar: `./scripts/stop.sh` o `./scripts/stop.ps1`. Para reiniciar sin build: `./scripts/start.sh` o `./scripts/start.ps1`.
 4. Sin API key el chat usa stub. El upload requiere Postgres (perfil core) y crea metadata en la DB.
+5. Embeddings de contenido: activados con `ENABLE_CONTENT_EMBED=1` (ver `.env`). Usa OpenAI + Qdrant; controla coste ajustando `CHUNK_SIZE_CHARS`/`MAX_CHUNKS`.
+6. Cliente React opcional: `cd frontend/vite-app && npm install && npm run dev` (usa `VITE_API_BASE` para el gateway, por defecto http://localhost:8088).
 
 ## Endpoints principales
 - Gateway: `POST /api/chat` (body `{message}`) -> orquestador; `POST /api/upload` (multipart `file`) -> RAG; `GET /api/uploads` (lista con paginacion offset/limit); `GET /api/chat/logs`; `POST /api/search` -> RAG; `GET /metrics` (Prometheus).
@@ -45,5 +47,7 @@ services/
 
 ## Notas
 - Logging persiste en `/app/logs/app.log` (volumenes mapeados en docker-compose para gateway/orquestador/RAG). Formato actual: textual.
-- Embeddings: por defecto solo se indexa el nombre del fichero; para indexar contenido activa `ENABLE_CONTENT_EMBED=1` y ajusta `CHUNK_SIZE_CHARS`/`MAX_CHUNKS` (usa OpenAI embeddings y Qdrant).
+- Embeddings: contenido indexado con OpenAI/Qdrant si `ENABLE_CONTENT_EMBED=1`; ajustar `CHUNK_SIZE_CHARS`/`MAX_CHUNKS` para controlar coste.
+- Reindexado: dentro del contenedor RAG puedes reindexar nombre + contenido existentes con  
+  `docker compose -f infra/docker/docker-compose.yml --profile core --profile app exec -T rag-server python -c "import sys; sys.path.append('/app'); import app.reindex as r; r.reindex()"`.
 - MCP y agentes externos especificos siguen en desarrollo.

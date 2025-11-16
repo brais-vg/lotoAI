@@ -1,14 +1,16 @@
-# Vite/React (borrador)
+# Vite/React client
 
-Objetivo: migrar la web estática a un cliente con estado (React/Vite) para soporte de streaming, paginación y UX richer.
+Cliente React sencillo (Vite) para chat, búsqueda, uploads y logs consumiendo el gateway.
 
-Propuesta mínima:
-- Crear el proyecto con `npm create vite@latest web-vite -- --template react`.
-- Configurar `VITE_API_BASE` para apuntar al gateway (por defecto `http://localhost:8088`).
-- Replicar vistas actuales (chat, búsqueda, uploads, logs) usando hooks y fetch.
-- Añadir componentes para:
-  - chat streaming en vez de poll
-  - formularios controlados y estados de error/carga
-  - paginación (offset/limit) en uploads y logs
+## Uso
+```
+cd frontend/vite-app
+npm install
+# opcional: export VITE_API_BASE=http://localhost:8088
+npm run dev   # abre en http://localhost:5173
+npm run build # build de producción
+```
 
-No se incluye código aún para evitar duplicar la web estática; este README actúa como guía de migración rápida.
+## Notas
+- Usa fetch hacia el gateway; por defecto `VITE_API_BASE` es `http://localhost:8088`.
+- Mantiene paginación básica (offset) para uploads y logs, y muestra resultados de búsqueda con score/chunk si existen.
