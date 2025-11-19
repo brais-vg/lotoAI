@@ -1,0 +1,3 @@
+Este es un fichero de prueba para verificar el sistema RAG de lotoAI.
+Contiene informacion sobre la verificacion del sistema.
+El sistema funciona correctamente si puedes encontrar este texto.

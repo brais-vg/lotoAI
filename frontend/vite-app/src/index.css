@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Backgrounds más vibrantes */
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  /* Cards con más contraste */
+  --card: 217 33% 17%;
+  --card-foreground: 210 40% 98%;
+
+  /* Primary con gradiente azul vibrante */
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 11%;
+
+  /* Secondary con toque púrpura */
+  --secondary: 262 52% 47%;
+  --secondary-foreground: 210 40% 98%;
+
+  /* Muted más claro para mejor contraste */
+  --muted: 217 33% 25%;
+  --muted-foreground: 215 20% 75%;
+
+  /* Accent con toque cyan */
+  --accent: 189 94% 43%;
+  --accent-foreground: 222 47% 11%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Borders más visibles */
+  --border: 217 33% 25%;
+  --input: 217 33% 20%;
+  --ring: 217 91% 60%;
+
+  --radius: 0.75rem;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: linear-gradient(135deg, hsl(222 47% 11%) 0%, hsl(222 47% 8%) 100%);
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+  min-height: 100vh;
+}
+
+/* Mejoras de glassmorphism para cards */
+.card-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradientes para botones */
+.btn-gradient {
+  background: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(262 52% 47%) 100%);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+}
+
+/* Inputs con mejor contraste */
+input,
+textarea {
+  color: hsl(var(--foreground)) !important;
+  background-color: hsl(var(--input)) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+  opacity: 0.6;
+}
