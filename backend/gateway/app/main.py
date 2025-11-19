@@ -142,6 +142,69 @@ async def search(req: SearchRequest) -> Dict[str, Any]:
     return resp.json()
 
 
+@app.post("/api/search/advanced")
+async def search_advanced(req: SearchRequest) -> Dict[str, Any]:
+    """Proxy de búsqueda avanzada al RAG."""
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:  # Más tiempo para LLM
+            resp = await client.post(f"{RAG_SERVER_URL}/search/advanced", json=req.model_dump())
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.exception("Error en búsqueda avanzada RAG: %s", exc)
+        SEARCH_COUNTER.labels(status="error").inc()
+        return {"query": req.text, "results": [], "mode": "error"}
+    SEARCH_COUNTER.labels(status="ok").inc()
+    return resp.json()
+
+
+# Chat History Endpoints (usando Orchestrator como storage temporal)
+@app.get("/api/chat/history")
+async def get_chat_history(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """Obtiene historial de chat del orquestador."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{ORCHESTRATOR_URL}/chat/history",
+                params={"limit": limit, "offset": offset}
+            )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.warning("Error obteniendo historial: %s", exc)
+        return {"messages": [], "total": 0}
+
+
+@app.post("/api/chat/history")
+async def send_chat_message(req: ChatRequest) -> Dict[str, Any]:
+    """Envía mensaje y guarda en historial."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{ORCHESTRATOR_URL}/chat/history",
+                json=req.model_dump()
+            )
+        resp.raise_for_status()
+        CHAT_COUNTER.labels(status="ok").inc()
+        return resp.json()
+    except Exception as exc:
+        logger.exception("Error en chat con historial: %s", exc)
+        CHAT_COUNTER.labels(status="error").inc()
+        raise HTTPException(status_code=502, detail="Error procesando mensaje")
+
+
+@app.delete("/api/chat/history")
+async def clear_chat_history() -> Dict[str, Any]:
+    """Limpia el historial de chat."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.delete(f"{ORCHESTRATOR_URL}/chat/history")
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.warning("Error limpiando historial: %s", exc)
+        return {"deleted": 0, "message": "Error clearing history"}
+
+
 @app.get("/metrics")
 async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

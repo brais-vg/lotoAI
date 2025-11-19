@@ -10,7 +10,6 @@ export default function AppLayout() {
     const navItems = [
         { to: "/", icon: MessageSquare, label: "Chat" },
         { to: "/upload", icon: Upload, label: "Upload" },
-        { to: "/search", icon: Search, label: "Search" },
     ];
 
     return (

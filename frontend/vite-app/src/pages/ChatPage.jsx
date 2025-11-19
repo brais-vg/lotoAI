@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, Trash2 } from "lucide-react";
 import { cn } from "../lib/utils";
 
 export default function ChatPage() {
@@ -20,30 +20,78 @@ export default function ChatPage() {
         scrollToBottom();
     }, [messages]);
 
+    // Load chat history on mount
+    useEffect(() => {
+        loadHistory();
+    }, []);
+
+    const loadHistory = async () => {
+        try {
+            const data = await api.chatHistory.getHistory();
+            const historyMessages = (data.messages || []).map(msg => ({
+                role: msg.role,
+                text: msg.message
+            }));
+            setMessages(historyMessages);
+        } catch (err) {
+            console.error("Error loading history:", err);
+        }
+    };
+
     const handleSend = async (e) => {
         e.preventDefault();
         if (!input.trim() || loading) return;
 
-        const userMsg = { role: "user", text: input };
-        setMessages((prev) => [...prev, userMsg]);
+        const userText = input;
         setInput("");
         setLoading(true);
 
+        // Optimistic update
+        setMessages((prev) => [...prev, { role: "user", text: userText }]);
+
         try {
-            const data = await api.chat.sendMessage(userMsg.text);
-            setMessages((prev) => [...prev, { role: "bot", text: data.message || "No response" }]);
+            const data = await api.chatHistory.sendMessage(userText);
+            // Replace optimistic message with server response
+            setMessages((prev) => [
+                ...prev.slice(0, -1),
+                { role: "user", text: data.user_message.message },
+                { role: "bot", text: data.bot_message.message }
+            ]);
         } catch (err) {
+            console.error(err);
             setMessages((prev) => [...prev, { role: "bot", text: "Error sending message" }]);
         } finally {
             setLoading(false);
         }
     };
 
+    const handleClearHistory = async () => {
+        if (!confirm("Are you sure you want to clear chat history?")) return;
+
+        try {
+            await api.chatHistory.clearHistory();
+            setMessages([]);
+        } catch (err) {
+            console.error("Error clearing history:", err);
+        }
+    };
+
     return (
         <div className="flex flex-col h-[calc(100vh-6rem)] gap-4">
             <Card className="flex-1 flex flex-col overflow-hidden border-0 shadow-none bg-transparent">
-                <CardHeader className="px-0 pt-0">
+                <CardHeader className="px-0 pt-0 flex flex-row items-center justify-between">
                     <CardTitle>Chat Assistant</CardTitle>
+                    {messages.length > 0 && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearHistory}
+                            className="text-destructive hover:text-destructive"
+                        >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Clear History
+                        </Button>
+                    )}
                 </CardHeader>
                 <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-card/50 rounded-lg border backdrop-blur-sm">
                     {messages.length === 0 && (

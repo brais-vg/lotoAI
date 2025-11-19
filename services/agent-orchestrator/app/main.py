@@ -75,16 +75,31 @@ def log_chat(message: str, provider: str, response: str) -> None:
 
 
 async def fetch_rag_context(query: str, limit: int = 3) -> List[Dict[str, Any]]:
-    """Busca contexto en RAG; degrada a lista vacía si falla."""
+    """Busca contexto en RAG usando búsqueda avanzada; degrada a lista vacía si falla."""
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{RAG_SERVER_URL}/search",
-                json={"text": query, "limit": limit},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("results", [])[:limit]
+        async with httpx.AsyncClient(timeout=30.0) as client:  # Más tiempo para advanced
+            # Intentar búsqueda avanzada primero
+            try:
+                resp = await client.post(
+                    f"{RAG_SERVER_URL}/search/advanced",
+                    json={"text": query, "limit": limit, "num_variants": 3},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results", [])[:limit]
+                if results:
+                    logger.info(f"Advanced RAG search returned {len(results)} results")
+                    return results
+            except Exception as exc:
+                logger.warning(f"Advanced search failed, trying normal: {exc}")
+                # Fallback a búsqueda normal
+                resp = await client.post(
+                    f"{RAG_SERVER_URL}/search",
+                    json={"text": query, "limit": limit},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("results", [])[:limit]
     except Exception as exc:  # pragma: no cover
         logger.warning("Fallo consultando RAG: %s", exc)
         return []
@@ -96,9 +111,10 @@ def build_context_message(sources: List[Dict[str, Any]]) -> str:
     lines = []
     for idx, s in enumerate(sources, 1):
         name = s.get("filename") or s.get("path") or f"doc-{idx}"
-        chunk = (s.get("chunk") or "")[:300]
-        lines.append(f"[{idx}] {name}: {chunk}")
-    return "Contexto recuperado:\n" + "\n".join(lines)
+        chunk = (s.get("chunk") or "")[:500]  # Más contexto
+        score = s.get("score", 0)
+        lines.append(f"[{idx}] {name} (relevancia: {score:.2f}):\n{chunk}")
+    return "Contexto recuperado de documentos:\n" + "\n\n".join(lines)
 
 
 @app.get("/health")
@@ -118,8 +134,18 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     if openai_client:
         try:
             system = (
-                "Eres un asistente. Usa el contexto si es relevante y cita el nombre del fichero."
-                " Si no hay contexto útil, responde brevemente."
+                "Eres un asistente experto. REGLAS CRÍTICAS:\n"
+                "1. Si recibes 'Contexto recuperado de documentos:', DEBES usarlo para responder.\n"
+                "2. El contexto contiene extractos REALES de documentos que el usuario subió.\n"
+                "3. Cuando uses el contexto, cita el nombre del archivo entre corchetes, ejemplo: [documento.pdf]\n"
+                "4. Si el contexto responde la pregunta, úsalo SIEMPRE, no digas que no tienes acceso.\n"
+                "5. Si el contexto NO es relevante, responde normalmente sin mencionarlo.\n\n"
+                "EJEMPLO CORRECTO:\n"
+                "Usuario: ¿Qué universidades ofrecen el máster en IA?\n"
+                "Contexto: [universidades.pdf] UCM, UB y UPM ofrecen el Máster en IA...\n"
+                "Respuesta: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son UCM, UB y UPM.\n\n"
+                "EJEMPLO INCORRECTO:\n"
+                "Respuesta: No tengo información sobre universidades. ❌ NUNCA HAGAS ESTO SI HAY CONTEXTO."
             )
             messages = [{"role": "system", "content": system}]
             if context_msg:
@@ -128,8 +154,8 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
             completion = openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=messages,
-                temperature=0.3,
-                max_tokens=300,
+                temperature=0.5,  # Aumentado de 0.3 para ser menos conservador
+                max_tokens=1000,  # Aumentado de 300 para dar más espacio
             )
             reply = completion.choices[0].message.content
             logger.info("Chat completado con OpenAI", extra={"provider": "openai"})
@@ -192,6 +218,108 @@ async def chat_logs(limit: int = 20, offset: int = 0) -> Dict[str, Any]:
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudieron leer logs de DB: %s", exc)
         return {"items": []}
+
+
+# In-memory chat history storage
+import asyncio
+from datetime import datetime
+
+chat_history: List[Dict[str, Any]] = []
+history_lock = asyncio.Lock()
+
+
+@app.get("/chat/history")
+async def get_chat_history(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """Devuelve el historial de chat."""
+    async with history_lock:
+        total = len(chat_history)
+        messages = list(reversed(chat_history))  # Más recientes primero
+        return {"messages": messages[offset:offset + limit], "total": total}
+
+
+@app.post("/chat/history")
+async def send_message_with_history(req: ChatRequest) -> Dict[str, Any]:
+    """Procesa mensaje, guarda en historial y devuelve respuesta."""
+    # Guardar mensaje del usuario
+    user_message = {
+        "id": len(chat_history) + 1,
+        "role": "user",
+        "message": req.message,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    async with history_lock:
+        chat_history.append(user_message)
+    
+    # Obtener respuesta del bot usando la lógica existente
+    top_k = req.top_k or 3
+    sources = await fetch_rag_context(req.message, limit=top_k)
+    context_msg = build_context_message(sources)
+    
+    if openai_client:
+        try:
+            system = (
+                "Eres un asistente experto. REGLAS CRÍTICAS:\n"
+                "1. Si recibes 'Contexto recuperado de documentos:', DEBES usarlo para responder.\n"
+                "2. El contexto contiene extractos REALES de documentos que el usuario subió.\n"
+                "3. Cuando uses el contexto, cita el nombre del archivo entre corchetes, ejemplo: [documento.pdf]\n"
+                "4. Si el contexto responde la pregunta, úsalo SIEMPRE, no digas que no tienes acceso.\n"
+                "5. Si el contexto NO es relevante, responde normalmente sin mencionarlo.\n\n"
+                "EJEMPLO CORRECTO:\n"
+                "Usuario: ¿Qué universidades ofrecen el máster en IA?\n"
+                "Contexto: [universidades.pdf] UCM, UB y UPM ofrecen el Máster en IA...\n"
+                "Respuesta: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son UCM, UB y UPM.\n\n"
+                "EJEMPLO INCORRECTO:\n"
+                "Respuesta: No tengo información sobre universidades. ❌ NUNCA HAGAS ESTO SI HAY CONTEXTO."
+            )
+            messages = [{"role": "system", "content": system}]
+            if context_msg:
+                messages.append({"role": "system", "content": context_msg})
+            messages.append({"role": "user", "content": req.message})
+            completion = openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=messages,
+                temperature=0.5,
+                max_tokens=1000,
+            )
+            bot_text = completion.choices[0].message.content or "Sin respuesta"
+            provider = "openai"
+        except Exception as exc:
+            logger.exception("Error con OpenAI: %s", exc)
+            bot_text = "Error procesando mensaje"
+            provider = "error"
+    else:
+        bot_text = f"Echo (sin OpenAI): {req.message}"
+        provider = "stub"
+    
+    # Guardar respuesta del bot
+    bot_message = {
+        "id": len(chat_history) + 1,
+        "role": "bot",
+        "message": bot_text,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    async with history_lock:
+        chat_history.append(bot_message)
+    
+    log_chat(req.message, provider, bot_text)
+    CHAT_COUNTER.labels(provider=provider).inc()
+    
+    return {
+        "user_message": user_message,
+        "bot_message": bot_message
+    }
+
+
+@app.delete("/chat/history")
+async def clear_chat_history() -> Dict[str, Any]:
+    """Limpia el historial de chat."""
+    async with history_lock:
+        deleted = len(chat_history)
+        chat_history.clear()
+    
+    return {"deleted": deleted, "message": "Chat history cleared"}
 
 
 @app.get("/metrics")

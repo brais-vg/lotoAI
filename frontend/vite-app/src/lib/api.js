@@ -29,11 +29,27 @@ export const api = {
             fetchJson(`${API_BASE}/api/uploads?limit=${limit}&offset=${offset}`),
     },
     search: {
-        search: (text) =>
-            fetchJson(`${API_BASE}/api/search`, {
+        search: (text, advanced = false) => {
+            const endpoint = advanced ? "/api/search/advanced" : "/api/search";
+            return fetchJson(`${API_BASE}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text }),
+            });
+        },
+    },
+    chatHistory: {
+        getHistory: (limit = 50, offset = 0) =>
+            fetchJson(`${API_BASE}/api/chat/history?limit=${limit}&offset=${offset}`),
+        sendMessage: (message) =>
+            fetchJson(`${API_BASE}/api/chat/history`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message }),
+            }),
+        clearHistory: () =>
+            fetchJson(`${API_BASE}/api/chat/history`, {
+                method: "DELETE",
             }),
     },
 };
