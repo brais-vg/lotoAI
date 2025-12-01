@@ -4,12 +4,17 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 try:
     from openai import OpenAI
 except ImportError:  # pragma: no cover
     OpenAI = None  # type: ignore
+
+try:
+    from sentence_transformers import CrossEncoder
+except ImportError:  # pragma: no cover
+    CrossEncoder = None  # type: ignore
 
 import psycopg2
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -17,7 +22,9 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from psycopg2.extras import RealDictCursor
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PointStruct, VectorParams, Filter, FieldCondition, MatchValue, Range
+
+from app.embedding_service import get_embedding_service, EmbeddingService
 
 DB_AVAILABLE = True
 
@@ -39,19 +46,60 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/lotoai"
 )
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+
+# Legacy OpenAI client for LLM calls (query variants)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
+
+# Embedding configuration
 ENABLE_CONTENT_EMBED = os.getenv("ENABLE_CONTENT_EMBED", "0").lower() in {"1", "true", "yes"}
-CHUNK_SIZE_CHARS = int(os.getenv("CHUNK_SIZE_CHARS", "800"))
-MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
-EMBED_COLLECTION_CONTENT = os.getenv("EMBED_COLLECTION_CONTENT", "uploads-content")
+
+# Chunking configuration - UNLIMITED by default for quality
+CHUNK_SIZE_CHARS = int(os.getenv("CHUNK_SIZE_CHARS", "600"))
+max_chunks_str = os.getenv("MAX_CHUNKS", "None")
+MAX_CHUNKS = None if max_chunks_str.lower() in {"none", ""} else int(max_chunks_str)
+MAX_CHUNKS_SAFETY = int(os.getenv("MAX_CHUNKS_SAFETY", "500"))  # Safety limit
+CHUNK_OVERLAP_RATIO = float(os.getenv("CHUNK_OVERLAP_RATIO", "0.25"))
+
+# Collection naming with prefix support
+COLLECTION_PREFIX = os.getenv("QDRANT_COLLECTION_PREFIX", "")
+if COLLECTION_PREFIX:
+    EMBED_COLLECTION_UPLOADS = f"{COLLECTION_PREFIX}-uploads"
+    EMBED_COLLECTION_CONTENT = f"{COLLECTION_PREFIX}-uploads-content"
+else:
+    EMBED_COLLECTION_UPLOADS = "uploads"
+    EMBED_COLLECTION_CONTENT = "uploads-content"
+
+# Reranking configuration
+ENABLE_RERANKING = os.getenv("ENABLE_RERANKING", "1").lower() in {"1", "true", "yes"}
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "50"))
+RERANK_FINAL_K = int(os.getenv("RERANK_FINAL_K", "10"))
+
+# Initialize embedding service
+try:
+    embedding_service: Optional[EmbeddingService] = get_embedding_service()
+    logger.info(f"Initialized embedding service: {embedding_service.get_model_name() if embedding_service else 'None'}")
+except Exception as exc:
+    logger.warning(f"Could not initialize embedding service: {exc}")
+    embedding_service = None
+
+# Initialize reranker
+reranker: Optional[CrossEncoder] = None
+if ENABLE_RERANKING and CrossEncoder:
+    try:
+        logger.info(f"Loading reranker model: {RERANKER_MODEL}")
+        reranker = CrossEncoder(RERANKER_MODEL)
+        logger.info("Reranker loaded successfully")
+    except Exception as exc:
+        logger.warning(f"Could not load reranker: {exc}")
 
 UPLOAD_DIR = Path(os.getenv("RAG_UPLOAD_DIR", "./data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_COUNTER = Counter("lotoai_rag_uploads_total", "Uploads procesados", ["status"])
 EMBED_COUNTER = Counter("lotoai_rag_embeddings_total", "Embeddings generados", ["type"])
 SEARCH_COUNTER = Counter("lotoai_rag_search_total", "Busquedas procesadas", ["mode"])
+RERANK_COUNTER = Counter("lotoai_rag_rerank_total", "Reranking operations", ["status"])
 
 
 def init_db() -> None:
@@ -86,24 +134,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="lotoAI RAG Server", version="0.3.0", lifespan=lifespan)
 
 
-def ensure_qdrant_collection(client: QdrantClient, name: str = "uploads") -> None:
+def ensure_qdrant_collection(client: QdrantClient, name: str = "uploads", vector_size: Optional[int] = None) -> None:
+    """Ensure Qdrant collection exists with appropriate vector size."""
     collections = [c.name for c in client.get_collections().collections]
     if name in collections:
         return
+    
+    # Auto-detect vector size from embedding service if not provided
+    if vector_size is None:
+        if embedding_service:
+            vector_size = embedding_service.get_dimension()
+        else:
+            vector_size = 1536  # Default fallback
+    
     client.create_collection(
         collection_name=name,
-        vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
     )
+    logger.info(f"Created Qdrant collection '{name}' with vector size {vector_size}")
 
 
 def embed_text(text: str) -> List[float]:
-    if not openai_client:
-        raise RuntimeError("No embedding provider configurado")
-    result = openai_client.embeddings.create(
-        model=OPENAI_EMBED_MODEL,
-        input=text[:2000],
-    )
-    return result.data[0].embedding  # type: ignore[attr-defined]
+    """Generate embedding for text using configured embedding service."""
+    if not embedding_service:
+        raise RuntimeError("No embedding service configured")
+    return embedding_service.embed(text)
 
 
 def generate_query_variants(query: str, num_variants: int = 3) -> List[str]:
@@ -168,22 +223,28 @@ def reciprocal_rank_fusion(
     return sorted(fused, key=lambda x: x["score"], reverse=True)
 
 
-def chunk_text(text: str) -> List[str]:
+def chunk_text(text: str) -> List[Dict[str, Any]]:
     """
-    Divide texto en chunks semánticos con overlap.
+    Divide texto en chunks semánticos con overlap y metadata.
+    Soporta chunks ilimitados para máxima calidad.
     Prioriza división por párrafos, luego por oraciones.
+    
+    Returns:
+        List of dicts with 'text' and 'metadata' keys
     """
     if not text:
         return []
     
-    chunks = []
+    chunks: List[Dict[str, Any]] = []
     size = max(200, CHUNK_SIZE_CHARS)
-    overlap = size // 4  # 25% overlap para mantener contexto
+    overlap = int(size * CHUNK_OVERLAP_RATIO)
     
     # Dividir por párrafos primero
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     
     current_chunk = ""
+    chunk_type = "paragraph"
+    
     for para in paragraphs:
         # Si el párrafo cabe en el chunk actual
         if len(current_chunk) + len(para) + 2 <= size:
@@ -191,8 +252,15 @@ def chunk_text(text: str) -> List[str]:
         else:
             # Guardar chunk actual si no está vacío
             if current_chunk:
-                chunks.append(current_chunk)
-                if len(chunks) >= MAX_CHUNKS:
+                chunks.append({
+                    "text": current_chunk,
+                    "type": chunk_type,
+                })
+                # Check safety limit
+                if MAX_CHUNKS is not None and len(chunks) >= MAX_CHUNKS:
+                    break
+                if len(chunks) >= MAX_CHUNKS_SAFETY:
+                    logger.warning(f"Hit safety limit of {MAX_CHUNKS_SAFETY} chunks")
                     break
                 # Mantener overlap del final del chunk anterior
                 current_chunk = current_chunk[-overlap:] if len(current_chunk) > overlap else ""
@@ -200,24 +268,44 @@ def chunk_text(text: str) -> List[str]:
             # Si el párrafo es muy largo, dividirlo por oraciones
             if len(para) > size:
                 sentences = para.replace(". ", ".\n").split("\n")
+                chunk_type = "sentence"
                 for sent in sentences:
                     if len(current_chunk) + len(sent) + 1 <= size:
                         current_chunk += (" " if current_chunk else "") + sent
                     else:
                         if current_chunk:
-                            chunks.append(current_chunk)
-                            if len(chunks) >= MAX_CHUNKS:
+                            chunks.append({
+                                "text": current_chunk,
+                                "type": chunk_type,
+                            })
+                            if MAX_CHUNKS is not None and len(chunks) >= MAX_CHUNKS:
+                                break
+                            if len(chunks) >= MAX_CHUNKS_SAFETY:
+                                logger.warning(f"Hit safety limit of {MAX_CHUNKS_SAFETY} chunks")
                                 break
                             current_chunk = current_chunk[-overlap:] if len(current_chunk) > overlap else ""
                         current_chunk = sent
+                chunk_type = "paragraph"  # Reset type
             else:
                 current_chunk = para
     
     # Añadir último chunk
-    if current_chunk and len(chunks) < MAX_CHUNKS:
-        chunks.append(current_chunk)
+    if current_chunk:
+        if MAX_CHUNKS is None or len(chunks) < MAX_CHUNKS:
+            if len(chunks) < MAX_CHUNKS_SAFETY:
+                chunks.append({
+                    "text": current_chunk,
+                    "type": chunk_type,
+                })
     
-    return chunks[:MAX_CHUNKS]
+    # Add chunk metadata
+    total_chunks = len(chunks)
+    for idx, chunk in enumerate(chunks):
+        chunk["chunk_index"] = idx
+        chunk["total_chunks"] = total_chunks
+    
+    logger.debug(f"Created {total_chunks} chunks from {len(text)} characters")
+    return chunks
 
 
 def extract_text_from_bytes(data: bytes, content_type: str, filename: str) -> str:
@@ -296,20 +384,26 @@ def extract_text_from_bytes(data: bytes, content_type: str, filename: str) -> st
 
 
 def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type: str) -> None:
-    if not ENABLE_CONTENT_EMBED or not openai_client:
+    """Index document content chunks in Qdrant with embeddings."""
+    if not ENABLE_CONTENT_EMBED or not embedding_service:
         return
+    
     text = extract_text_from_bytes(data, content_type, payload.get("filename", ""))
     chunks = chunk_text(text)
     if not chunks:
         return
+    
     try:
         client = QdrantClient(url=QDRANT_URL)
         ensure_qdrant_collection(client, name=EMBED_COLLECTION_CONTENT)
         points = []
-        for idx, chunk in enumerate(chunks):
-            vector = embed_text(chunk)
+        
+        for chunk_data in chunks:
+            chunk_text_str = chunk_data["text"]
+            vector = embed_text(chunk_text_str)
+            
             point = PointStruct(
-                id=payload["id"] * 1000 + idx,
+                id=payload["id"] * 1000 + chunk_data["chunk_index"],
                 vector=vector,
                 payload={
                     "file_id": payload["id"],
@@ -318,30 +412,35 @@ def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type:
                     "size_bytes": payload.get("size_bytes"),
                     "content_type": payload.get("content_type"),
                     "created_at": payload.get("created_at"),
-                    "chunk": chunk[:300],
+                    "chunk": chunk_text_str[:300],  # Store preview
+                    "chunk_index": chunk_data["chunk_index"],
+                    "total_chunks": chunk_data["total_chunks"],
+                    "chunk_type": chunk_data["type"],
                 },
             )
             points.append(point)
+        
         client.upsert(collection_name=EMBED_COLLECTION_CONTENT, points=points)
         EMBED_COUNTER.labels(type="content").inc(len(points))
+        logger.info(f"Indexed {len(points)} content chunks for file_id={payload['id']}")
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudo indexar contenido en Qdrant: %s", exc)
 
 
 def index_upload_qdrant(payload: Dict[str, Any]) -> None:
     """Indexa el upload en Qdrant con embedding del nombre de fichero."""
-    if not openai_client:
+    if not embedding_service:
         return
     try:
         client = QdrantClient(url=QDRANT_URL)
-        ensure_qdrant_collection(client)
+        ensure_qdrant_collection(client, name=EMBED_COLLECTION_UPLOADS)
         vector = embed_text(payload.get("filename", ""))
         point = PointStruct(
             id=payload["id"],
             vector=vector,
             payload=payload,
         )
-        client.upsert(collection_name="uploads", points=[point])
+        client.upsert(collection_name=EMBED_COLLECTION_UPLOADS, points=[point])
         logger.info("Indexado en Qdrant upload id=%s", payload["id"])
         EMBED_COUNTER.labels(type="filename").inc()
     except Exception as exc:  # pragma: no cover
@@ -436,25 +535,66 @@ async def list_uploads(limit: int = 20, offset: int = 0) -> Dict[str, Any]:
         return {"items": []}
 
 
+def rerank_results(query: str, results: List[Dict[str, Any]], top_k: int = 10) -> List[Dict[str, Any]]:
+    """
+    Rerank search results using cross-encoder model.
+    
+    Args:
+        query: Search query
+        results: List of result dicts with 'chunk' or 'filename' for text matching
+        top_k: Number of top results to return after reranking
+        
+    Returns:
+        Reranked results with updated scores and rerank_score field
+    """
+    if not reranker or not results:
+        return results[:top_k]
+    
+    try:
+        # Prepare query-document pairs for cross-encoder
+        pairs = []
+        for result in results:
+            # Use chunk preview if available, otherwise use filename
+            text = result.get("chunk", result.get("filename", ""))
+            pairs.append([query, text])
+        
+        # Get reranking scores
+        scores = reranker.predict(pairs)
+        
+        # Add rerank scores to results and sort
+        for i, result in enumerate(results):
+            result["rerank_score"] = float(scores[i])
+            result["original_score"] = result.get("score", 0.0)
+        
+        # Sort by rerank score and return top k
+        reranked = sorted(results, key=lambda x: x["rerank_score"], reverse=True)
+        RERANK_COUNTER.labels(status="success").inc()
+        logger.debug(f"Reranked {len(results)} results, returning top {top_k}")
+        return reranked[:top_k]
+    except Exception as exc:
+        logger.warning("Error during reranking: %s", exc)
+        RERANK_COUNTER.labels(status="error").inc()
+        return results[:top_k]
 
 
 @app.post("/search")
 async def search(query: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Búsqueda híbrida mejorada:
+    Búsqueda híbrida mejorada con reranking:
     - Búsqueda vectorial en contenido y nombres
-    - Reranking por relevancia
+    - Reranking opcional por relevancia
     - Deduplicación de resultados
     - Fallback a LIKE en Postgres
     """
     text = (query.get("text") or "").strip()
     limit = min(query.get("limit", 10), 50)  # Máximo 50 resultados
+    use_reranking = query.get("rerank", ENABLE_RERANKING)
     
     if not DB_AVAILABLE or not text:
         return {"query": text, "results": []}
     
     try:
-        if openai_client:
+        if embedding_service:
             try:
                 client = QdrantClient(url=QDRANT_URL)
                 vector = embed_text(text)
@@ -466,19 +606,20 @@ async def search(query: Dict[str, Any]) -> Dict[str, Any]:
                     found_content = client.search(
                         collection_name=EMBED_COLLECTION_CONTENT,
                         query_vector=vector,
-                        limit=limit * 2,  # Buscar más para tener opciones
+                        limit=RERANK_TOP_K if use_reranking else limit * 2,
                     )
                     for hit in found_content:
                         payload = hit.payload or {}
-                        upload_id = payload.get("upload_id")
-                        if upload_id:
+                        file_id = payload.get("file_id")  # Note: Changed from upload_id
+                        if file_id:
                             # Si ya existe, mantener el de mayor score
-                            if upload_id not in results_map or hit.score > results_map[upload_id].get("score", 0):
-                                results_map[upload_id] = {
-                                    "id": upload_id,
+                            if file_id not in results_map or hit.score > results_map[file_id].get("score", 0):
+                                results_map[file_id] = {
+                                    "id": file_id,
                                     "filename": payload.get("filename", ""),
                                     "chunk": payload.get("chunk", ""),
                                     "chunk_index": payload.get("chunk_index", 0),
+                                    "chunk_type": payload.get("chunk_type", ""),
                                     "score": hit.score,
                                     "created_at": payload.get("created_at"),
                                     "content_type": payload.get("content_type"),
@@ -489,24 +630,24 @@ async def search(query: Dict[str, Any]) -> Dict[str, Any]:
 
                 # Buscar en nombres de archivos
                 try:
-                    ensure_qdrant_collection(client, name="uploads")
+                    ensure_qdrant_collection(client, name=EMBED_COLLECTION_UPLOADS)
                     found_files = client.search(
-                        collection_name="uploads",
+                        collection_name=EMBED_COLLECTION_UPLOADS,
                         query_vector=vector,
                         limit=limit,
                     )
                     for hit in found_files:
                         payload = hit.payload or {}
-                        upload_id = payload.get("id")
-                        if upload_id:
+                        file_id = payload.get("id")
+                        if file_id:
                             # Si ya existe del contenido, combinar scores
-                            if upload_id in results_map:
+                            if file_id in results_map:
                                 # Boost si coincide tanto en nombre como en contenido
-                                results_map[upload_id]["score"] = (results_map[upload_id]["score"] + hit.score) / 2
-                                results_map[upload_id]["name_match"] = True
+                                results_map[file_id]["score"] = (results_map[file_id]["score"] + hit.score) / 2
+                                results_map[file_id]["name_match"] = True
                             else:
-                                results_map[upload_id] = {
-                                    "id": upload_id,
+                                results_map[file_id] = {
+                                    "id": file_id,
                                     "filename": payload.get("filename", ""),
                                     "chunk": "",  # No hay chunk para búsqueda por nombre
                                     "score": hit.score,
@@ -519,15 +660,23 @@ async def search(query: Dict[str, Any]) -> Dict[str, Any]:
                     logger.warning("Fallo búsqueda vectorial de nombres: %s", exc)
 
                 if results_map:
-                    # Ordenar por score descendente y limitar
+                    # Convert to list and sort
                     results_vec = sorted(
                         results_map.values(),
                         key=lambda x: x.get("score", 0),
                         reverse=True
-                    )[:limit]
+                    )
                     
-                    SEARCH_COUNTER.labels(mode="vector").inc()
-                    return {"query": text, "results": results_vec, "mode": "vector"}
+                    # Apply reranking if enabled
+                    if use_reranking and reranker:
+                        results_vec = rerank_results(text, results_vec, top_k=min(RERANK_FINAL_K, limit))
+                        mode = "vector+rerank"
+                    else:
+                        results_vec = results_vec[:limit]
+                        mode = "vector"
+                    
+                    SEARCH_COUNTER.labels(mode=mode).inc()
+                    return {"query": text, "results": results_vec, "mode": mode}
             except Exception as exc:
                 logger.warning("Fallo búsqueda vectorial, se usa LIKE: %s", exc)
 

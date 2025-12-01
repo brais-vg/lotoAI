@@ -1,0 +1,130 @@
+{
+  "test_queries": [
+    {
+      "query": "What port does the Gateway run on?",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "port 8088",
+      "category": "factual_retrieval"
+    },
+    {
+      "query": "How does the RAG server handle embeddings?",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "supports both OpenAI and local Sentence Transformers",
+      "category": "technical_detail"
+    },
+    {
+      "query": "What is the maximum file size for uploads?",
+      "expected_doc": "product_features.pdf OR faq_document.pdf",
+      "expected_answer": "50MB",
+      "category": "specification"
+    },
+    {
+      "query": "Which database stores metadata?",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "PostgreSQL",
+      "category": "architecture"
+    },
+    {
+      "query": "What file formats are supported?",
+      "expected_doc": "faq_document.pdf OR product_features.pdf",
+      "expected_answer": "PDF, DOCX, DOC, TXT, MD, HTML, HTM",
+      "category": "features"
+    },
+    {
+      "query": "How do I upload a document?",
+      "expected_doc": "user_guide.pdf",
+      "expected_answer": "Click Upload button, select files, wait for completion",
+      "category": "procedural"
+    },
+    {
+      "query": "Can LotoAI work offline?",
+      "expected_doc": "faq_document.pdf OR product_features.pdf",
+      "expected_answer": "Yes, with local embedding mode (EMBEDDING_PROVIDER=local)",
+      "category": "capability"
+    },
+    {
+      "query": "What is reranking and why is it useful?",
+      "expected_doc": "faq_document.pdf",
+      "expected_answer": "Two-stage retrieval: fast vector search then cross-encoder reordering for better relevance",
+      "category": "concept"
+    },
+    {
+      "query": "Which embedding model performed best in the research?",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "OpenAI (MRR 0.945), followed by BGE-M3 (MRR 0.863)",
+      "category": "research_finding"
+    },
+    {
+      "query": "What was the accuracy improvement from reranking?",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "15-20% or 15-18% improvement",
+      "category": "quantitative"
+    },
+    {
+      "query": "What chunking strategy gives best results?",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "Unlimited chunking with 25% overlap",
+      "category": "methodology"
+    },
+    {
+      "query": "How many languages does BGE-M3 support?",
+      "expected_doc": "product_features.pdf",
+      "expected_answer": "100+ languages",
+      "category": "specification"
+    },
+    {
+      "query": "What is the Agent Orchestrator's port?",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "port 8090",
+      "category": "factual_retrieval"
+    },
+    {
+      "query": "Tips for better search results",
+      "expected_doc": "user_guide.pdf",
+      "expected_answer": "Be specific, use keywords, ask one thing at a time, check sources",
+      "category": "best_practices"
+    },
+    {
+      "query": "What does the Gateway component do?",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "Main entry point, routing, rate limiting, authentication, request validation",
+      "category": "architecture"
+    }
+  ],
+  "test_scenarios": {
+    "baseline_vector_search": {
+      "description": "Test pure vector search without reranking",
+      "config": {
+        "rerank": false,
+        "limit": 10
+      }
+    },
+    "with_reranking": {
+      "description": "Test with reranking enabled",
+      "config": {
+        "rerank": true,
+        "limit": 10
+      }
+    },
+    "advanced_multiquery": {
+      "description": "Test multi-query retrieval with RRF",
+      "endpoint": "/search/advanced",
+      "config": {
+        "limit": 10,
+        "num_variants": 3
+      }
+    }
+  },
+  "expected_improvements": {
+    "reranking_should_improve": [
+      "query index 7 (concept explanation)",
+      "query index 9 (quantitative finding)",
+      "query index 14 (complex description)"
+    ],
+    "multiquery_should_improve": [
+      "query index 10 (methodology)",
+      "query index 13 (best practices)",
+      "query index 14 (architecture)"
+    ]
+  }
+}

@@ -1,0 +1,567 @@
+{
+  "timestamp": "20251201_195402",
+  "summary": {
+    "total_queries": 15,
+    "reordered_count": 0,
+    "avg_latency_no_rerank_ms": 776.8544514973959,
+    "avg_latency_with_rerank_ms": 732.4294090270996,
+    "rerank_overhead_ms": -44.42504247029626
+  },
+  "detailed_results": [
+    {
+      "query": "What port does the Gateway run on?",
+      "category": "factual_retrieval",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "port 8088",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 866.0860061645508,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.21623147,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 426.3184070587158,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.21626101,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "How does the RAG server handle embeddings?",
+      "category": "technical_detail",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "supports both OpenAI and local Sentence Transformers",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 351.2153625488281,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.28866145,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 550.6978034973145,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.28866145,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What is the maximum file size for uploads?",
+      "category": "specification",
+      "expected_doc": "product_features.pdf OR faq_document.pdf",
+      "expected_answer": "50MB",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 688.7280941009521,
+        "num_results": 10,
+        "top_result": {
+          "id": 8,
+          "filename": "upload-e78b3df19b014900b1e2509814554e0e.txt",
+          "chunk": "",
+          "score": 0.34728643,
+          "created_at": "2025-11-15T23:39:29.938493+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 64,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 456.62379264831543,
+        "num_results": 10,
+        "top_result": {
+          "id": 8,
+          "filename": "upload-e78b3df19b014900b1e2509814554e0e.txt",
+          "chunk": "",
+          "score": 0.34733295,
+          "created_at": "2025-11-15T23:39:29.938493+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 64,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "Which database stores metadata?",
+      "category": "architecture",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "PostgreSQL",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 461.41695976257324,
+        "num_results": 10,
+        "top_result": {
+          "id": 1,
+          "filename": "tmpD5AE.tmp",
+          "chunk": "",
+          "score": 0.22090138,
+          "created_at": "2025-11-15T22:58:20.820383+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 0,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 693.0155754089355,
+        "num_results": 10,
+        "top_result": {
+          "id": 1,
+          "filename": "tmpD5AE.tmp",
+          "chunk": "",
+          "score": 0.22163884,
+          "created_at": "2025-11-15T22:58:20.820383+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 0,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What file formats are supported?",
+      "category": "features",
+      "expected_doc": "faq_document.pdf OR product_features.pdf",
+      "expected_answer": "PDF, DOCX, DOC, TXT, MD, HTML, HTM",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 480.14378547668457,
+        "num_results": 10,
+        "top_result": {
+          "id": 16,
+          "filename": "faq_document.pdf",
+          "chunk": "",
+          "score": 0.3447647,
+          "created_at": "2025-12-01T18:52:55.596975+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 3032,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 1143.627405166626,
+        "num_results": 10,
+        "top_result": {
+          "id": 16,
+          "filename": "faq_document.pdf",
+          "chunk": "",
+          "score": 0.34475398,
+          "created_at": "2025-12-01T18:52:55.596975+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 3032,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "How do I upload a document?",
+      "category": "procedural",
+      "expected_doc": "user_guide.pdf",
+      "expected_answer": "Click Upload button, select files, wait for completion",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 840.0001525878906,
+        "num_results": 10,
+        "top_result": {
+          "id": 2,
+          "filename": "upload.pdf",
+          "chunk": "",
+          "score": 0.46833223,
+          "created_at": "2025-11-15T22:59:28.671365+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 1033672,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 395.4005241394043,
+        "num_results": 10,
+        "top_result": {
+          "id": 2,
+          "filename": "upload.pdf",
+          "chunk": "",
+          "score": 0.4682669,
+          "created_at": "2025-11-15T22:59:28.671365+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 1033672,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "Can LotoAI work offline?",
+      "category": "capability",
+      "expected_doc": "faq_document.pdf OR product_features.pdf",
+      "expected_answer": "Yes, with local embedding mode (EMBEDDING_PROVIDER=local)",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 600.1596450805664,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.25129893,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 973.8492965698242,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.25131017,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What is reranking and why is it useful?",
+      "category": "concept",
+      "expected_doc": "faq_document.pdf",
+      "expected_answer": "Two-stage retrieval: fast vector search then cross-encoder reordering for better relevance",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 756.5789222717285,
+        "num_results": 10,
+        "top_result": {
+          "id": 18,
+          "filename": "research_paper.pdf",
+          "chunk": "",
+          "score": 0.15538073,
+          "created_at": "2025-12-01T18:53:07.995489+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 5682,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 1298.4333038330078,
+        "num_results": 10,
+        "top_result": {
+          "id": 18,
+          "filename": "research_paper.pdf",
+          "chunk": "",
+          "score": 0.15525308,
+          "created_at": "2025-12-01T18:53:07.995489+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 5682,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "Which embedding model performed best in the research?",
+      "category": "research_finding",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "OpenAI (MRR 0.945), followed by BGE-M3 (MRR 0.863)",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 854.5889854431152,
+        "num_results": 10,
+        "top_result": {
+          "id": 18,
+          "filename": "research_paper.pdf",
+          "chunk": "",
+          "score": 0.24999988,
+          "created_at": "2025-12-01T18:53:07.995489+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 5682,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 653.0911922454834,
+        "num_results": 10,
+        "top_result": {
+          "id": 18,
+          "filename": "research_paper.pdf",
+          "chunk": "",
+          "score": 0.24998584,
+          "created_at": "2025-12-01T18:53:07.995489+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 5682,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What was the accuracy improvement from reranking?",
+      "category": "quantitative",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "15-20% or 15-18% improvement",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 644.7510719299316,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.19102195,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 665.5149459838867,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.19100216,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What chunking strategy gives best results?",
+      "category": "methodology",
+      "expected_doc": "research_paper.pdf",
+      "expected_answer": "Unlimited chunking with 25% overlap",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 556.3013553619385,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.21745099,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 1576.88307762146,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.21746062,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "How many languages does BGE-M3 support?",
+      "category": "specification",
+      "expected_doc": "product_features.pdf",
+      "expected_answer": "100+ languages",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 927.6199340820312,
+        "num_results": 10,
+        "top_result": {
+          "id": 3,
+          "filename": "BOCM-20251023-21.pdf",
+          "chunk": "",
+          "score": 0.23524661,
+          "created_at": "2025-11-15T23:01:51.024523+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 93328,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 586.6024494171143,
+        "num_results": 10,
+        "top_result": {
+          "id": 3,
+          "filename": "BOCM-20251023-21.pdf",
+          "chunk": "",
+          "score": 0.23520896,
+          "created_at": "2025-11-15T23:01:51.024523+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 93328,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What is the Agent Orchestrator's port?",
+      "category": "factual_retrieval",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "port 8090",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 861.6664409637451,
+        "num_results": 10,
+        "top_result": {
+          "id": 3,
+          "filename": "BOCM-20251023-21.pdf",
+          "chunk": "",
+          "score": 0.21802688,
+          "created_at": "2025-11-15T23:01:51.024523+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 93328,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 477.3590564727783,
+        "num_results": 10,
+        "top_result": {
+          "id": 3,
+          "filename": "BOCM-20251023-21.pdf",
+          "chunk": "",
+          "score": 0.21806385,
+          "created_at": "2025-11-15T23:01:51.024523+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 93328,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "Tips for better search results",
+      "category": "best_practices",
+      "expected_doc": "user_guide.pdf",
+      "expected_answer": "Be specific, use keywords, ask one thing at a time, check sources",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 1324.6712684631348,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.26979867,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 576.6005516052246,
+        "num_results": 10,
+        "top_result": {
+          "id": 12,
+          "filename": "chat-rag-test-549d4904a529453d907b0924d8c71828.txt",
+          "chunk": "",
+          "score": 0.2698375,
+          "created_at": "2025-11-16T11:42:13.960907+00:00",
+          "content_type": "text/plain",
+          "size_bytes": 98,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    },
+    {
+      "query": "What does the Gateway component do?",
+      "category": "architecture",
+      "expected_doc": "technical_architecture.pdf",
+      "expected_answer": "Main entry point, routing, rate limiting, authentication, request validation",
+      "without_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 1438.8887882232666,
+        "num_results": 10,
+        "top_result": {
+          "id": 19,
+          "filename": "technical_architecture.pdf",
+          "chunk": "",
+          "score": 0.22212103,
+          "created_at": "2025-12-01T18:53:11.372550+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 2753,
+          "name_match": true
+        }
+      },
+      "with_rerank": {
+        "mode": "vector",
+        "elapsed_ms": 512.4237537384033,
+        "num_results": 10,
+        "top_result": {
+          "id": 19,
+          "filename": "technical_architecture.pdf",
+          "chunk": "",
+          "score": 0.22213143,
+          "created_at": "2025-12-01T18:53:11.372550+00:00",
+          "content_type": "application/pdf",
+          "size_bytes": 2753,
+          "name_match": true
+        }
+      },
+      "order_changed": false
+    }
+  ]
+}
