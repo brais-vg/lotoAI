@@ -34,6 +34,14 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 RAG_SERVER_URL = os.getenv("RAG_SERVER_URL", "http://rag-server:8000")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OpenAI and OPENAI_API_KEY) else None
 MAX_LOG_LENGTH = 500
+
+# Chat configuration
+CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.7"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1500"))
+CHAT_HISTORY_LENGTH = int(os.getenv("CHAT_HISTORY_LENGTH", "5"))
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.3"))
+RAG_CONTEXT_CHARS = int(os.getenv("RAG_CONTEXT_CHARS", "1000"))
+
 CHAT_COUNTER = Counter("lotoai_orchestrator_chat_total", "Solicitudes de chat", ["provider"])
 LOGS_COUNTER = Counter("lotoai_orchestrator_logs_total", "Lecturas de logs de chat")
 
@@ -106,15 +114,61 @@ async def fetch_rag_context(query: str, limit: int = 3) -> List[Dict[str, Any]]:
 
 
 def build_context_message(sources: List[Dict[str, Any]]) -> str:
+    """Construye mensaje de contexto filtrando por relevancia mínima."""
     if not sources:
         return ""
+    
+    # Filtrar por score mínimo
+    relevant_sources = [s for s in sources if s.get("score", 0) >= RAG_MIN_SCORE]
+    
+    if not relevant_sources:
+        logger.info(f"No relevant sources found (all below min_score={RAG_MIN_SCORE})")
+        return ""
+    
+    logger.info(f"Using {len(relevant_sources)}/{len(sources)} sources (min_score={RAG_MIN_SCORE})")
+    
     lines = []
-    for idx, s in enumerate(sources, 1):
+    for idx, s in enumerate(relevant_sources, 1):
         name = s.get("filename") or s.get("path") or f"doc-{idx}"
-        chunk = (s.get("chunk") or "")[:500]  # Más contexto
+        chunk = (s.get("chunk") or "")[:RAG_CONTEXT_CHARS]
         score = s.get("score", 0)
-        lines.append(f"[{idx}] {name} (relevancia: {score:.2f}):\n{chunk}")
+        chunk_index = s.get("chunk_index")
+        total_chunks = s.get("total_chunks")
+        chunk_type = s.get("chunk_type", "")
+        
+        # Construir metadata del chunk
+        metadata_parts = [f"relevancia: {score:.2f}"]
+        if chunk_index is not None and total_chunks:
+            metadata_parts.append(f"fragmento {chunk_index + 1}/{total_chunks}")
+        if chunk_type:
+            metadata_parts.append(f"tipo: {chunk_type}")
+        
+        metadata = ", ".join(metadata_parts)
+        lines.append(f"[{idx}] {name} ({metadata}):\n{chunk}")
+    
     return "Contexto recuperado de documentos:\n" + "\n\n".join(lines)
+
+
+def build_conversation_history(history: List[Dict[str, Any]], max_messages: int = 5) -> str:
+    """Construye historial conversacional reciente para contexto."""
+    if not history or max_messages <= 0:
+        return ""
+    
+    # Tomar últimos N mensajes
+    recent = history[-max_messages:] if len(history) > max_messages else history
+    
+    lines = []
+    for msg in recent:
+        role = msg.get("role", "unknown")
+        text = msg.get("message", "")
+        if role == "user":
+            lines.append(f"Usuario: {text}")
+        elif role == "bot":
+            lines.append(f"Asistente: {text}")
+    
+    if lines:
+        return "Conversación reciente:\n" + "\n".join(lines)
+    return ""
 
 
 @app.get("/health")
@@ -129,36 +183,52 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     """
     top_k = req.top_k or 3
     sources = await fetch_rag_context(req.message, limit=top_k)
+    
+    # Log de fuentes recuperadas
+    logger.info(f"RAG returned {len(sources)} sources for query: {req.message[:100]}")
+    for idx, src in enumerate(sources):
+        logger.debug(f"  Source {idx+1}: {src.get('filename')} (score: {src.get('score', 0):.3f})")
+    
     context_msg = build_context_message(sources)
+    
+    if context_msg:
+        logger.info("Using RAG context in prompt")
+    else:
+        logger.info("No relevant RAG context available")
 
     if openai_client:
         try:
             system = (
-                "Eres un asistente experto. REGLAS CRÍTICAS:\n"
-                "1. Si recibes 'Contexto recuperado de documentos:', DEBES usarlo para responder.\n"
-                "2. El contexto contiene extractos REALES de documentos que el usuario subió.\n"
-                "3. Cuando uses el contexto, cita el nombre del archivo entre corchetes, ejemplo: [documento.pdf]\n"
-                "4. Si el contexto responde la pregunta, úsalo SIEMPRE, no digas que no tienes acceso.\n"
-                "5. Si el contexto NO es relevante, responde normalmente sin mencionarlo.\n\n"
-                "EJEMPLO CORRECTO:\n"
-                "Usuario: ¿Qué universidades ofrecen el máster en IA?\n"
-                "Contexto: [universidades.pdf] UCM, UB y UPM ofrecen el Máster en IA...\n"
-                "Respuesta: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son UCM, UB y UPM.\n\n"
-                "EJEMPLO INCORRECTO:\n"
-                "Respuesta: No tengo información sobre universidades. ❌ NUNCA HAGAS ESTO SI HAY CONTEXTO."
+                "Eres un asistente experto que ayuda a usuarios respondiendo sus preguntas.\n\n"
+                "INSTRUCCIONES PARA USO DE CONTEXTO:\n"
+                "- Si recibes 'Contexto recuperado de documentos:', significa que el usuario tiene documentos subidos.\n"
+                "- Este contexto contiene extractos REALES y VERIFICADOS de esos documentos.\n"
+                "- Cuando el contexto contiene información relevante para la pregunta, ÚSALO como fuente principal.\n"
+                "- SIEMPRE cita el nombre del archivo entre corchetes cuando uses información del contexto.\n"
+                "- Si el contexto no es relevante para la pregunta, responde con tu conocimiento general.\n\n"
+                "EJEMPLOS DE USO CORRECTO:\n"
+                "Pregunta: ¿Qué universidades ofrecen el máster en IA?\n"
+                "Contexto: [universidades.pdf] La UCM, UB y UPM ofrecen el Máster en Inteligencia Artificial...\n"
+                "Respuesta CORRECTA: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son la UCM, UB y UPM.\n\n"
+                "ERRORES A EVITAR:\n"
+                "❌ NUNCA digas 'no tengo información' si hay contexto relevante.\n"
+                "❌ NUNCA ignores el contexto cuando responde directamente la pregunta.\n"
+                "❌ NUNCA inventes información que no está en el contexto.\n\n"
+                "Sé natural, útil y preciso. Cita siempre tus fuentes cuando uses el contexto."
             )
             messages = [{"role": "system", "content": system}]
             if context_msg:
                 messages.append({"role": "system", "content": context_msg})
             messages.append({"role": "user", "content": req.message})
+            
             completion = openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=messages,
-                temperature=0.5,  # Aumentado de 0.3 para ser menos conservador
-                max_tokens=1000,  # Aumentado de 300 para dar más espacio
+                temperature=CHAT_TEMPERATURE,
+                max_tokens=CHAT_MAX_TOKENS,
             )
             reply = completion.choices[0].message.content
-            logger.info("Chat completado con OpenAI", extra={"provider": "openai"})
+            logger.info(f"OpenAI response generated (temp={CHAT_TEMPERATURE}, max_tokens={CHAT_MAX_TOKENS})")
             log_chat(req.message, "openai", reply or "")
             CHAT_COUNTER.labels(provider="openai").inc()
             return {"message": reply, "provider": "openai", "input": req.message, "sources": sources}
@@ -251,39 +321,73 @@ async def send_message_with_history(req: ChatRequest) -> Dict[str, Any]:
     async with history_lock:
         chat_history.append(user_message)
     
-    # Obtener respuesta del bot usando la lógica existente
+    # Obtener respuesta del bot usando la lógica mejorada
     top_k = req.top_k or 3
     sources = await fetch_rag_context(req.message, limit=top_k)
+    
+    # Log de fuentes recuperadas
+    logger.info(f"RAG returned {len(sources)} sources for query: {req.message[:100]}")
+    for idx, src in enumerate(sources):
+        logger.debug(f"  Source {idx+1}: {src.get('filename')} (score: {src.get('score', 0):.3f})")
+    
     context_msg = build_context_message(sources)
+    
+    # Construir historial conversacional (excluyendo el mensaje actual)
+    async with history_lock:
+        history_context = build_conversation_history(
+            chat_history[:-1],  # Excluir el mensaje que acabamos de añadir
+            max_messages=CHAT_HISTORY_LENGTH
+        )
+    
+    if context_msg:
+        logger.info("Using RAG context in prompt")
+    else:
+        logger.info("No relevant RAG context available")
+    
+    if history_context:
+        logger.info(f"Including {CHAT_HISTORY_LENGTH} previous messages in context")
     
     if openai_client:
         try:
             system = (
-                "Eres un asistente experto. REGLAS CRÍTICAS:\n"
-                "1. Si recibes 'Contexto recuperado de documentos:', DEBES usarlo para responder.\n"
-                "2. El contexto contiene extractos REALES de documentos que el usuario subió.\n"
-                "3. Cuando uses el contexto, cita el nombre del archivo entre corchetes, ejemplo: [documento.pdf]\n"
-                "4. Si el contexto responde la pregunta, úsalo SIEMPRE, no digas que no tienes acceso.\n"
-                "5. Si el contexto NO es relevante, responde normalmente sin mencionarlo.\n\n"
-                "EJEMPLO CORRECTO:\n"
-                "Usuario: ¿Qué universidades ofrecen el máster en IA?\n"
-                "Contexto: [universidades.pdf] UCM, UB y UPM ofrecen el Máster en IA...\n"
-                "Respuesta: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son UCM, UB y UPM.\n\n"
-                "EJEMPLO INCORRECTO:\n"
-                "Respuesta: No tengo información sobre universidades. ❌ NUNCA HAGAS ESTO SI HAY CONTEXTO."
+                "Eres un asistente experto que ayuda a usuarios respondiendo sus preguntas.\n\n"
+                "INSTRUCCIONES PARA USO DE CONTEXTO:\n"
+                "- Si recibes 'Contexto recuperado de documentos:', significa que el usuario tiene documentos subidos.\n"
+                "- Este contexto contiene extractos REALES y VERIFICADOS de esos documentos.\n"
+                "- Cuando el contexto contiene información relevante para la pregunta, ÚSALO como fuente principal.\n"
+                "- SIEMPRE cita el nombre del archivo entre corchetes cuando uses información del contexto.\n"
+                "- Si el contexto no es relevante para la pregunta, responde con tu conocimiento general.\n\n"
+                "EJEMPLOS DE USO CORRECTO:\n"
+                "Pregunta: ¿Qué universidades ofrecen el máster en IA?\n"
+                "Contexto: [universidades.pdf] La UCM, UB y UPM ofrecen el Máster en Inteligencia Artificial...\n"
+                "Respuesta CORRECTA: Según [universidades.pdf], las universidades que ofrecen el Máster en Inteligencia Artificial son la UCM, UB y UPM.\n\n"
+                "ERRORES A EVITAR:\n"
+                "❌ NUNCA digas 'no tengo información' si hay contexto relevante.\n"
+                "❌ NUNCA ignores el contexto cuando responde directamente la pregunta.\n"
+                "❌ NUNCA inventes información que no está en el contexto.\n\n"
+                "Sé natural, útil y preciso. Cita siempre tus fuentes cuando uses el contexto."
             )
             messages = [{"role": "system", "content": system}]
+            
+            # Añadir historial conversacional si existe
+            if history_context:
+                messages.append({"role": "system", "content": history_context})
+            
+            # Añadir contexto RAG si existe
             if context_msg:
                 messages.append({"role": "system", "content": context_msg})
+            
             messages.append({"role": "user", "content": req.message})
+            
             completion = openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=messages,
-                temperature=0.5,
-                max_tokens=1000,
+                temperature=CHAT_TEMPERATURE,
+                max_tokens=CHAT_MAX_TOKENS,
             )
             bot_text = completion.choices[0].message.content or "Sin respuesta"
             provider = "openai"
+            logger.info(f"OpenAI response generated (temp={CHAT_TEMPERATURE}, max_tokens={CHAT_MAX_TOKENS})")
         except Exception as exc:
             logger.exception("Error con OpenAI: %s", exc)
             bot_text = "Error procesando mensaje"
