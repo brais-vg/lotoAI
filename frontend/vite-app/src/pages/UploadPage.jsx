@@ -31,7 +31,14 @@ export default function UploadPage() {
 
         setUploading(true);
         try {
-            await api.upload.uploadFile(file);
+            const result = await api.upload.uploadFile(file);
+            
+            // Check indexing status
+            if (result?.indexing && !result.indexing.success) {
+                const errorMsg = result.indexing.error || "No se pudo indexar el contenido";
+                alert(`⚠️ Archivo subido pero con advertencia:\n${errorMsg}\n\nEl documento podría no ser buscable por contenido.`);
+            }
+            
             await loadUploads();
         } catch (err) {
             console.error(err);

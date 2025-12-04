@@ -383,15 +383,44 @@ def extract_text_from_bytes(data: bytes, content_type: str, filename: str) -> st
     return text
 
 
-def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type: str) -> None:
-    """Index document content chunks in Qdrant with embeddings."""
-    if not ENABLE_CONTENT_EMBED or not embedding_service:
-        return
+def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type: str) -> Dict[str, Any]:
+    """Index document content chunks in Qdrant with embeddings.
     
-    text = extract_text_from_bytes(data, content_type, payload.get("filename", ""))
+    Returns:
+        Dict with indexing status:
+        - success: bool
+        - chunks_indexed: int
+        - error: Optional[str]
+    """
+    result = {"success": False, "chunks_indexed": 0, "error": None}
+    
+    if not ENABLE_CONTENT_EMBED or not embedding_service:
+        result["error"] = "Content embedding disabled or no embedding service"
+        return result
+    
+    filename = payload.get("filename", "unknown")
+    file_id = payload.get("id", 0)
+    
+    # Extract text
+    text = extract_text_from_bytes(data, content_type, filename)
+    
+    # Validate content is not empty
+    if not text or len(text.strip()) < 10:
+        logger.warning(
+            "Empty or insufficient content extracted from file_id=%s (%s). "
+            "Text length: %d. Document will not be searchable by content.",
+            file_id, filename, len(text) if text else 0
+        )
+        result["error"] = f"No searchable content extracted from {filename}"
+        return result
+    
+    logger.info(f"Extracted {len(text)} chars from {filename} (file_id={file_id})")
+    
     chunks = chunk_text(text)
     if not chunks:
-        return
+        result["error"] = f"No chunks generated from {filename}"
+        logger.warning("No chunks generated for file_id=%s (%s)", file_id, filename)
+        return result
     
     try:
         client = QdrantClient(url=QDRANT_URL)
@@ -422,9 +451,16 @@ def index_content_embeddings(payload: Dict[str, Any], data: bytes, content_type:
         
         client.upsert(collection_name=EMBED_COLLECTION_CONTENT, points=points)
         EMBED_COUNTER.labels(type="content").inc(len(points))
-        logger.info(f"Indexed {len(points)} content chunks for file_id={payload['id']}")
+        logger.info(f"Indexed {len(points)} content chunks for file_id={file_id} ({filename})")
+        
+        result["success"] = True
+        result["chunks_indexed"] = len(points)
+        return result
+        
     except Exception as exc:  # pragma: no cover
         logger.warning("No se pudo indexar contenido en Qdrant: %s", exc)
+        result["error"] = str(exc)
+        return result
 
 
 def index_upload_qdrant(payload: Dict[str, Any]) -> None:
@@ -489,7 +525,17 @@ async def upload(file: UploadFile = File(...)) -> Dict[str, Any]:
         }
         logger.info("Archivo guardado en RAG: %s", payload)
         index_upload_qdrant(payload)
-        index_content_embeddings(payload, data, file.content_type or "")
+        
+        # Index content and capture result
+        indexing_result = index_content_embeddings(payload, data, file.content_type or "")
+        
+        # Add indexing status to response
+        payload["indexing"] = {
+            "success": indexing_result.get("success", False),
+            "chunks_indexed": indexing_result.get("chunks_indexed", 0),
+            "error": indexing_result.get("error"),
+        }
+        
         UPLOAD_COUNTER.labels(status="ok").inc()
         return payload
     except Exception as exc:

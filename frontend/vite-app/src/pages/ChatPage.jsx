@@ -3,8 +3,50 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
-import { Send, Loader2, Trash2 } from "lucide-react";
+import { Send, Loader2, Trash2, FileText } from "lucide-react";
 import { cn } from "../lib/utils";
+
+// Render message text with clickable citations
+const renderMessageWithCitations = (text) => {
+    // Match patterns like [documento.pdf] or [1] filename.pdf
+    const citationRegex = /\[([^\]]+\.(pdf|docx|txt|md|html))\]|\[(\d+)\]\s*([^\s,\.\n]+\.(pdf|docx|txt|md|html))/gi;
+
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = citationRegex.exec(text)) !== null) {
+        // Add text before citation
+        if (match.index > lastIndex) {
+            parts.push(<span key={`text-${lastIndex}`}>{text.slice(lastIndex, match.index)}</span>);
+        }
+
+        // Extract filename from match
+        const filename = match[1] || match[4];
+
+        // Add citation badge
+        parts.push(
+            <span
+                key={`cite-${match.index}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 text-xs bg-primary/20 text-primary rounded-full cursor-pointer hover:bg-primary/30 transition-colors"
+                title={`Fuente: ${filename}`}
+            >
+                <FileText className="h-3 w-3" />
+                {filename.length > 20 ? filename.slice(0, 20) + "..." : filename}
+            </span>
+        );
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+        parts.push(<span key={`text-${lastIndex}`}>{text.slice(lastIndex)}</span>);
+    }
+
+    return parts.length > 0 ? parts : text;
+};
+
 
 export default function ChatPage() {
     const [input, setInput] = useState("");
@@ -115,7 +157,7 @@ export default function ChatPage() {
                                         : "bg-muted text-foreground"
                                 )}
                             >
-                                {msg.text}
+                                {msg.role === "bot" ? renderMessageWithCitations(msg.text) : msg.text}
                             </div>
                         </div>
                     ))}
