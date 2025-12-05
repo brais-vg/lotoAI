@@ -1,1 +1,0 @@
-# lotoAI RAG app package
